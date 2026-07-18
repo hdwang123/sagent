@@ -602,3 +602,7 @@ public record AgentResponse(
 - 日志、指标和调用链追踪
 - 模型输出审查
 - 高风险操作的人工确认
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)。
