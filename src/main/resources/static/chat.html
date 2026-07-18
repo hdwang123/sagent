@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sagent Chat</title>
+    <link rel="stylesheet" href="lib/element-ui/index.css">
+    <style>
+        :root {
+            --page-bg: #f3f5f7;
+            --panel-bg: #ffffff;
+            --border: #dfe3e8;
+            --text: #1f2933;
+            --muted: #6b7280;
+            --primary: #176b5b;
+            --primary-hover: #115548;
+            --assistant-bg: #f7f9fa;
+            --user-bg: #176b5b;
+            --danger: #c2413b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body,
+        #app {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            overflow: hidden;
+            color: var(--text);
+            background: var(--page-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+
+        button,
+        textarea {
+            font-family: inherit;
+        }
+
+        .app-shell {
+            display: grid;
+            grid-template-rows: 58px minmax(0, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 0 22px;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            gap: 11px;
+        }
+
+        .brand-mark {
+            display: grid;
+            flex: 0 0 32px;
+            width: 32px;
+            height: 32px;
+            place-items: center;
+            color: #fff;
+            background: var(--primary);
+            border-radius: 6px;
+            font-size: 17px;
+        }
+
+        .brand-copy {
+            min-width: 0;
+        }
+
+        .brand-title {
+            margin: 0;
+            overflow: hidden;
+            font-size: 16px;
+            font-weight: 650;
+            line-height: 21px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .brand-subtitle {
+            margin: 0;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 15px;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-right: 4px;
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            background: #2f855a;
+            border-radius: 50%;
+        }
+
+        .icon-button {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            place-items: center;
+            color: #4b5563;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .icon-button:hover {
+            color: var(--primary);
+            border-color: #8fb7ae;
+            background: #f5faf8;
+        }
+
+        .chat-main {
+            min-height: 0;
+            padding: 18px;
+        }
+
+        .chat-panel {
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) auto;
+            width: min(100%, 980px);
+            height: 100%;
+            margin: 0 auto;
+            overflow: hidden;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 8px 28px rgba(31, 41, 51, 0.06);
+        }
+
+        .messages {
+            min-height: 0;
+            padding: 26px clamp(18px, 5vw, 64px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .empty-state {
+            display: grid;
+            height: 100%;
+            min-height: 260px;
+            place-content: center;
+            justify-items: center;
+            text-align: center;
+        }
+
+        .empty-icon {
+            display: grid;
+            width: 48px;
+            height: 48px;
+            margin-bottom: 14px;
+            place-items: center;
+            color: var(--primary);
+            background: #e7f2ef;
+            border-radius: 8px;
+            font-size: 23px;
+        }
+
+        .empty-state h2 {
+            margin: 0 0 7px;
+            font-size: 19px;
+            font-weight: 650;
+        }
+
+        .empty-state p {
+            max-width: 420px;
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .message-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 11px;
+            margin-bottom: 22px;
+        }
+
+        .message-row.user {
+            flex-direction: row-reverse;
+        }
+
+        .avatar {
+            display: grid;
+            flex: 0 0 30px;
+            width: 30px;
+            height: 30px;
+            place-items: center;
+            color: #fff;
+            background: #56616f;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .message-row.user .avatar {
+            background: var(--primary);
+        }
+
+        .message-content {
+            max-width: min(76%, 680px);
+            min-width: 0;
+        }
+
+        .message-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 18px;
+            margin-bottom: 5px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .message-row.user .message-meta {
+            justify-content: flex-end;
+        }
+
+        .message-author {
+            color: #374151;
+            font-weight: 600;
+        }
+
+        .message-bubble {
+            padding: 11px 14px;
+            overflow-wrap: anywhere;
+            color: var(--text);
+            background: var(--assistant-bg);
+            border: 1px solid #e6e9ed;
+            border-radius: 3px 8px 8px 8px;
+            font-size: 14px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+
+        .message-row.user .message-bubble {
+            color: #fff;
+            background: var(--user-bg);
+            border-color: var(--user-bg);
+            border-radius: 8px 3px 8px 8px;
+        }
+
+        .message-row.error .message-bubble {
+            color: #8b2520;
+            background: #fff5f4;
+            border-color: #ecc1be;
+        }
+
+        .typing {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 18px;
+        }
+
+        .typing span {
+            width: 5px;
+            height: 5px;
+            background: #7b8794;
+            border-radius: 50%;
+            animation: typing 1.15s infinite ease-in-out;
+        }
+
+        .typing span:nth-child(2) {
+            animation-delay: 0.16s;
+        }
+
+        .typing span:nth-child(3) {
+            animation-delay: 0.32s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.45;
+            }
+            30% {
+                transform: translateY(-3px);
+                opacity: 1;
+            }
+        }
+
+        .composer {
+            padding: 14px clamp(14px, 4vw, 28px) 16px;
+            background: #fafbfc;
+            border-top: 1px solid var(--border);
+        }
+
+        .input-wrap {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+            gap: 10px;
+            padding: 9px 9px 9px 14px;
+            background: #fff;
+            border: 1px solid #cfd5dc;
+            border-radius: 7px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input-wrap:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(23, 107, 91, 0.1);
+        }
+
+        .message-input {
+            width: 100%;
+            max-height: 160px;
+            min-height: 40px;
+            padding: 9px 0;
+            resize: none;
+            color: var(--text);
+            background: transparent;
+            border: 0;
+            outline: 0;
+            font-size: 14px;
+            line-height: 22px;
+        }
+
+        .message-input::placeholder {
+            color: #9aa3ad;
+        }
+
+        .send-button {
+            display: grid;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            place-items: center;
+            color: #fff;
+            background: var(--primary);
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .send-button:hover {
+            background: var(--primary-hover);
+        }
+
+        .send-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
+        .send-button.stop {
+            background: var(--danger);
+        }
+
+        .composer-footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 18px;
+            padding-top: 7px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .request-status {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 640px) {
+            .topbar {
+                padding: 0 14px;
+            }
+
+            .brand-subtitle,
+            .connection-status {
+                display: none;
+            }
+
+            .chat-main {
+                padding: 0;
+            }
+
+            .chat-panel {
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+            }
+
+            .messages {
+                padding: 20px 14px;
+            }
+
+            .message-content {
+                max-width: calc(100% - 42px);
+            }
+
+            .composer-footer span:last-child {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app" class="app-shell">
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark"><i class="el-icon-chat-dot-round"></i></div>
+            <div class="brand-copy">
+                <h1 class="brand-title">Sagent Chat</h1>
+                <p class="brand-subtitle">Agent development console</p>
+            </div>
+        </div>
+        <div class="topbar-actions">
+            <div class="connection-status">
+                <span class="status-dot"></span>
+                <span>OpenRouter ready</span>
+            </div>
+            <el-tooltip content="清空会话" placement="bottom">
+                <button class="icon-button" type="button" aria-label="清空会话"
+                        :disabled="loading || messages.length === 0" @click="clearMessages">
+                    <i class="el-icon-delete"></i>
+                </button>
+            </el-tooltip>
+        </div>
+    </header>
+
+    <main class="chat-main">
+        <section class="chat-panel" aria-label="AI 聊天窗口">
+            <div ref="messages" class="messages" aria-live="polite">
+                <div v-if="messages.length === 0" class="empty-state">
+                    <div class="empty-icon"><i class="el-icon-cpu"></i></div>
+                    <h2>开始测试你的 Agent</h2>
+                    <p>输入一条任务消息，响应结果与调用耗时会显示在这里。</p>
+                </div>
+
+                <article v-for="message in messages" :key="message.id"
+                         class="message-row" :class="[message.role, { error: message.error }]">
+                    <div class="avatar">
+                        <i :class="message.role === 'user' ? 'el-icon-user' : 'el-icon-cpu'"></i>
+                    </div>
+                    <div class="message-content">
+                        <div class="message-meta">
+                            <span class="message-author">{{ message.role === 'user' ? '你' : 'Sagent' }}</span>
+                            <span>{{ message.time }}</span>
+                            <span v-if="message.duration">{{ message.duration }} ms</span>
+                        </div>
+                        <div class="message-bubble">
+                            <div v-if="message.pending" class="typing" aria-label="正在生成">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <template v-else>{{ message.content }}</template>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <footer class="composer">
+                <div class="input-wrap">
+                    <textarea ref="input" v-model="input" class="message-input" rows="1"
+                              placeholder="向 Sagent 发送消息"
+                              :disabled="loading"
+                              @input="resizeInput"
+                              @keydown.enter.exact.prevent="sendMessage"></textarea>
+                    <el-tooltip :content="loading ? '停止请求' : '发送消息'" placement="top">
+                        <button v-if="!loading" class="send-button" type="button" aria-label="发送消息"
+                                :disabled="!input.trim()" @click="sendMessage">
+                            <i class="el-icon-position"></i>
+                        </button>
+                        <button v-else class="send-button stop" type="button" aria-label="停止请求"
+                                @click="stopRequest">
+                            <i class="el-icon-video-pause"></i>
+                        </button>
+                    </el-tooltip>
+                </div>
+                <div class="composer-footer">
+                    <span class="request-status">{{ statusText }}</span>
+                    <span>Enter 发送 · Shift + Enter 换行</span>
+                </div>
+            </footer>
+        </section>
+    </main>
+</div>
+
+<script src="lib/vue/vue.min.js"></script>
+<script src="lib/element-ui/index.js"></script>
+<script>
+    new Vue({
+        el: "#app",
+        data: function () {
+            return {
+                input: "",
+                messages: [],
+                loading: false,
+                controller: null,
+                nextId: 1,
+                statusText: "就绪"
+            };
+        },
+        mounted: function () {
+            this.$refs.input.focus();
+        },
+        methods: {
+            now: function () {
+                return new Date().toLocaleTimeString("zh-CN", {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                });
+            },
+            scrollToBottom: function () {
+                this.$nextTick(function () {
+                    var container = this.$refs.messages;
+                    container.scrollTop = container.scrollHeight;
+                });
+            },
+            resizeInput: function () {
+                this.$nextTick(function () {
+                    var input = this.$refs.input;
+                    input.style.height = "auto";
+                    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+                });
+            },
+            sendMessage: async function () {
+                var content = this.input.trim();
+                if (!content || this.loading) {
+                    return;
+                }
+
+                this.messages.push({
+                    id: this.nextId++,
+                    role: "user",
+                    content: content,
+                    time: this.now()
+                });
+
+                var assistantMessage = {
+                    id: this.nextId++,
+                    role: "assistant",
+                    content: "",
+                    time: this.now(),
+                    pending: true,
+                    error: false
+                };
+                this.messages.push(assistantMessage);
+
+                this.input = "";
+                this.loading = true;
+                this.statusText = "正在请求模型…";
+                this.controller = new AbortController();
+                var startedAt = performance.now();
+                this.resizeInput();
+                this.scrollToBottom();
+
+                try {
+                    var response = await fetch("/ai/chat?message=" + encodeURIComponent(content), {
+                        method: "GET",
+                        headers: { "Accept": "application/json" },
+                        signal: this.controller.signal
+                    });
+
+                    var body = await response.json().catch(function () {
+                        return {};
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(body.message || body.error || "请求失败（HTTP " + response.status + "）");
+                    }
+
+                    assistantMessage.content = body.answer || "模型返回了空响应";
+                    assistantMessage.duration = Math.round(performance.now() - startedAt);
+                    this.statusText = "完成 · " + assistantMessage.duration + " ms";
+                } catch (error) {
+                    assistantMessage.error = true;
+                    assistantMessage.content = error.name === "AbortError"
+                        ? "请求已停止"
+                        : "调用失败：" + error.message;
+                    this.statusText = error.name === "AbortError" ? "已停止" : "请求失败";
+                } finally {
+                    assistantMessage.pending = false;
+                    this.loading = false;
+                    this.controller = null;
+                    this.scrollToBottom();
+                    this.$nextTick(function () {
+                        this.$refs.input.focus();
+                    });
+                }
+            },
+            stopRequest: function () {
+                if (this.controller) {
+                    this.controller.abort();
+                }
+            },
+            clearMessages: function () {
+                this.messages = [];
+                this.statusText = "就绪";
+                this.$nextTick(function () {
+                    this.$refs.input.focus();
+                });
+            }
+        }
+    });
+</script>
+</body>
+</html>

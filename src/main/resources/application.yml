@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: sagent
+  ai:
+    openai:
+      base-url: https://openrouter.ai/api
+      api-key: ${OPENROUTER_API_KEY:not-configured}
+      chat:
+        base-url: https://openrouter.ai/api/v1
+        options:
+          model: ${OPENROUTER_MODEL:openrouter/free}
