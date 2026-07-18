@@ -1,30 +1,37 @@
 package com.example.sagent.controller;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.bind.annotation.GetMapping;
+import com.example.sagent.agent.core.AgentService;
+import com.example.sagent.agent.model.AgentResponse;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @RestController
 @RequestMapping("/ai")
 public class ChatController {
 
-    private final ChatClient chatClient;
+    private final AgentService agentService;
 
-    public ChatController(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public ChatController(AgentService agentService) {
+        this.agentService = agentService;
     }
 
-    @GetMapping("/chat")
-    public Map<String, String> chat(@RequestParam String message) {
-        String answer = chatClient.prompt()
-                .user(message)
-                .call()
-                .content();
+    @PostMapping("/chat")
+    public AgentResponse chat(@RequestBody ChatRequest request) {
+        return agentService.ask(requireMessage(request.message()));
+    }
 
-        return Map.of("answer", answer);
+    private String requireMessage(String message) {
+        if (message == null || message.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "message must not be blank");
+        }
+        return message.trim();
+    }
+
+    public record ChatRequest(String message) {
     }
 }

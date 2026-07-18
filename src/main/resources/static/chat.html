@@ -252,6 +252,27 @@
             font-weight: 600;
         }
 
+        .route-badge {
+            padding: 1px 6px;
+            color: #255f54;
+            background: #e7f2ef;
+            border: 1px solid #c7ddd7;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .route-detail {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .route-detail span + span::before {
+            content: " · ";
+        }
+
         .message-bubble {
             padding: 11px 14px;
             overflow-wrap: anywhere;
@@ -470,6 +491,7 @@
                     <div class="message-content">
                         <div class="message-meta">
                             <span class="message-author">{{ message.role === 'user' ? '你' : 'Sagent' }}</span>
+                            <span v-if="message.type" class="route-badge">{{ routeLabel(message.type) }}</span>
                             <span>{{ message.time }}</span>
                             <span v-if="message.duration">{{ message.duration }} ms</span>
                         </div>
@@ -478,6 +500,11 @@
                                 <span></span><span></span><span></span>
                             </div>
                             <template v-else>{{ message.content }}</template>
+                        </div>
+                        <div v-if="!message.pending && (message.routeReason || (message.sources && message.sources.length))"
+                             class="route-detail">
+                            <span v-if="message.routeReason">路由：{{ message.routeReason }}</span>
+                            <span v-if="message.sources && message.sources.length">来源：{{ message.sources.join("、") }}</span>
                         </div>
                     </div>
                 </article>
@@ -548,6 +575,13 @@
                     input.style.height = Math.min(input.scrollHeight, 160) + "px";
                 });
             },
+            routeLabel: function (type) {
+                return {
+                    CHAT: "普通聊天",
+                    RAG: "RAG 检索",
+                    DATABASE: "数据库查询"
+                }[type] || type;
+            },
             sendMessage: async function () {
                 var content = this.input.trim();
                 if (!content || this.loading) {
@@ -567,7 +601,10 @@
                     content: "",
                     time: this.now(),
                     pending: true,
-                    error: false
+                    error: false,
+                    type: "",
+                    routeReason: "",
+                    sources: []
                 };
                 this.messages.push(assistantMessage);
 
@@ -580,9 +617,13 @@
                 this.scrollToBottom();
 
                 try {
-                    var response = await fetch("/ai/chat?message=" + encodeURIComponent(content), {
-                        method: "GET",
-                        headers: { "Accept": "application/json" },
+                    var response = await fetch("/ai/chat", {
+                        method: "POST",
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ message: content }),
                         signal: this.controller.signal
                     });
 
@@ -595,6 +636,9 @@
                     }
 
                     assistantMessage.content = body.answer || "模型返回了空响应";
+                    assistantMessage.type = body.type || "";
+                    assistantMessage.routeReason = body.routeReason || "";
+                    assistantMessage.sources = body.sources || [];
                     assistantMessage.duration = Math.round(performance.now() - startedAt);
                     this.statusText = "完成 · " + assistantMessage.duration + " ms";
                 } catch (error) {
