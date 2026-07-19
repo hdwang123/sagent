@@ -548,14 +548,22 @@
                 messages: [],
                 loading: false,
                 controller: null,
+                conversationId: "",
                 nextId: 1,
                 statusText: "就绪"
             };
         },
         mounted: function () {
+            this.conversationId = this.createConversationId();
             this.$refs.input.focus();
         },
         methods: {
+            createConversationId: function () {
+                if (window.crypto && typeof window.crypto.randomUUID === "function") {
+                    return window.crypto.randomUUID();
+                }
+                return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+            },
             now: function () {
                 return new Date().toLocaleTimeString("zh-CN", {
                     hour: "2-digit",
@@ -623,7 +631,10 @@
                             "Accept": "application/json",
                             "Content-Type": "application/json"
                         },
-                        body: JSON.stringify({ message: content }),
+                        body: JSON.stringify({
+                            conversationId: this.conversationId,
+                            message: content
+                        }),
                         signal: this.controller.signal
                     });
 
@@ -636,6 +647,7 @@
                     }
 
                     assistantMessage.content = body.answer || "模型返回了空响应";
+                    this.conversationId = body.conversationId || this.conversationId;
                     assistantMessage.type = body.type || "";
                     assistantMessage.routeReason = body.routeReason || "";
                     assistantMessage.sources = body.sources || [];
@@ -662,9 +674,23 @@
                     this.controller.abort();
                 }
             },
-            clearMessages: function () {
+            clearMessages: async function () {
+                var previousConversationId = this.conversationId;
                 this.messages = [];
+                this.conversationId = this.createConversationId();
                 this.statusText = "就绪";
+
+                if (previousConversationId) {
+                    try {
+                        await fetch(
+                            "/ai/conversations/" + encodeURIComponent(previousConversationId),
+                            { method: "DELETE" }
+                        );
+                    } catch (error) {
+                        console.warn("清理服务端会话记忆失败", error);
+                    }
+                }
+
                 this.$nextTick(function () {
                     this.$refs.input.focus();
                 });

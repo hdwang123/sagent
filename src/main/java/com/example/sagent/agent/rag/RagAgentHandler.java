@@ -1,9 +1,12 @@
 package com.example.sagent.agent.rag;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,13 +24,19 @@ public class RagAgentHandler implements AgentHandler {
 
     private final ChatClient chatClient;
     private final VectorKnowledgeRetriever knowledgeRetriever;
+    private final ConversationHistory conversationHistory;
 
     public RagAgentHandler(
             ChatClient.Builder chatClientBuilder,
-            VectorKnowledgeRetriever knowledgeRetriever
+            MessageChatMemoryAdvisor memoryAdvisor,
+            VectorKnowledgeRetriever knowledgeRetriever,
+            ConversationHistory conversationHistory
     ) {
-        this.chatClient = chatClientBuilder.build();
+        this.chatClient = chatClientBuilder
+                .defaultAdvisors(memoryAdvisor)
+                .build();
         this.knowledgeRetriever = knowledgeRetriever;
+        this.conversationHistory = conversationHistory;
     }
 
     @Override
@@ -36,8 +45,9 @@ public class RagAgentHandler implements AgentHandler {
     }
 
     @Override
-    public HandlerResult handle(String message) {
-        List<VectorKnowledgeRetriever.KnowledgeHit> hits = knowledgeRetriever.search(message);
+    public HandlerResult handle(String conversationId, String message) {
+        String retrievalQuery = conversationHistory.retrievalQuery(conversationId, message);
+        List<VectorKnowledgeRetriever.KnowledgeHit> hits = knowledgeRetriever.search(retrievalQuery);
         String context = hits.isEmpty()
                 ? "没有检索到相关知识库内容。"
                 : hits.stream()
@@ -55,6 +65,10 @@ public class RagAgentHandler implements AgentHandler {
                                 """)
                         .param("question", message)
                         .param("context", context))
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        conversationId
+                ))
                 .call()
                 .content();
 

@@ -27,18 +27,19 @@ class AgentServiceTests {
                 List.of(chatHandler, ragHandler, databaseHandler)
         );
 
-        when(classifier.classify("如何配置 Sagent？"))
+        when(classifier.classify("conversation-1", "如何配置 Sagent？"))
                 .thenReturn(new RouteDecision(AgentType.RAG, "属于项目知识问题"));
-        when(ragHandler.handle("如何配置 Sagent？"))
+        when(ragHandler.handle("conversation-1", "如何配置 Sagent？"))
                 .thenReturn(new HandlerResult("从知识库得到的答案", List.of("sagent-overview.md")));
 
-        AgentResponse response = agentService.ask("如何配置 Sagent？");
+        AgentResponse response = agentService.ask("conversation-1", "如何配置 Sagent？");
 
+        assertThat(response.conversationId()).isEqualTo("conversation-1");
         assertThat(response.type()).isEqualTo(AgentType.RAG);
         assertThat(response.answer()).isEqualTo("从知识库得到的答案");
         assertThat(response.routeReason()).isEqualTo("属于项目知识问题");
         assertThat(response.sources()).containsExactly("sagent-overview.md");
-        verify(ragHandler).handle("如何配置 Sagent？");
+        verify(ragHandler).handle("conversation-1", "如何配置 Sagent？");
     }
 
     private AgentHandler handler(AgentType type) {

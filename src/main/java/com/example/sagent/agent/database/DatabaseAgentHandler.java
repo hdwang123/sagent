@@ -4,6 +4,8 @@ import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,9 +24,12 @@ public class DatabaseAgentHandler implements AgentHandler {
 
     public DatabaseAgentHandler(
             ChatClient.Builder chatClientBuilder,
+            MessageChatMemoryAdvisor memoryAdvisor,
             ProductDatabaseTools databaseTools
     ) {
-        this.chatClient = chatClientBuilder.build();
+        this.chatClient = chatClientBuilder
+                .defaultAdvisors(memoryAdvisor)
+                .build();
         this.databaseTools = databaseTools;
     }
 
@@ -34,11 +39,15 @@ public class DatabaseAgentHandler implements AgentHandler {
     }
 
     @Override
-    public HandlerResult handle(String message) {
+    public HandlerResult handle(String conversationId, String message) {
         String answer = chatClient.prompt()
                 .system(DATABASE_SYSTEM_PROMPT)
                 .user(message)
                 .tools(databaseTools)
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        conversationId
+                ))
                 .call()
                 .content();
         return new HandlerResult(answer);

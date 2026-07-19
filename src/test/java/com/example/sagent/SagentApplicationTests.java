@@ -4,6 +4,9 @@ import com.example.sagent.agent.database.ProductDatabaseTools;
 import com.example.sagent.agent.rag.VectorKnowledgeRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.transformers.TransformersEmbeddingModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,8 +27,16 @@ class SagentApplicationTests {
     @Autowired
     private VectorKnowledgeRetriever knowledgeRetriever;
 
+    @Autowired
+    private ChatMemory chatMemory;
+
+    @Autowired
+    private MessageChatMemoryAdvisor messageChatMemoryAdvisor;
+
     @Test
     void contextLoads() {
+        assertThat(chatMemory).isInstanceOf(MessageWindowChatMemory.class);
+        assertThat(messageChatMemoryAdvisor).isNotNull();
     }
 
     @Test

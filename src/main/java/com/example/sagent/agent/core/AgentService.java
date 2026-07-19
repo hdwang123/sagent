@@ -25,15 +25,16 @@ public class AgentService {
         }
     }
 
-    public AgentResponse ask(String message) {
-        RouteDecision decision = classifier.classify(message);
+    public AgentResponse ask(String conversationId, String message) {
+        RouteDecision decision = classifier.classify(conversationId, message);
         AgentHandler handler = handlers.get(decision.type());
         if (handler == null) {
             throw new IllegalStateException("No handler registered for " + decision.type());
         }
 
-        HandlerResult result = handler.handle(message);
+        HandlerResult result = handler.handle(conversationId, message);
         return new AgentResponse(
+                conversationId,
                 result.answer(),
                 decision.type(),
                 decision.reason(),

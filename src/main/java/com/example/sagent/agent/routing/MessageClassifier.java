@@ -1,5 +1,6 @@
 package com.example.sagent.agent.routing;
 
+import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
 import org.springframework.ai.chat.client.ChatClient;
@@ -21,16 +22,32 @@ public class MessageClassifier {
             """;
 
     private final ChatClient chatClient;
+    private final ConversationHistory conversationHistory;
 
-    public MessageClassifier(ChatClient.Builder chatClientBuilder) {
+    public MessageClassifier(
+            ChatClient.Builder chatClientBuilder,
+            ConversationHistory conversationHistory
+    ) {
         this.chatClient = chatClientBuilder.build();
+        this.conversationHistory = conversationHistory;
     }
 
-    public RouteDecision classify(String message) {
+    public RouteDecision classify(String conversationId, String message) {
         try {
+            String history = conversationHistory.format(conversationId);
+            String classificationInput = history.isBlank()
+                    ? message
+                    : """
+                    以下是此前的会话，可用于理解当前消息中的指代和上下文：
+                    %s
+
+                    当前用户消息：
+                    %s
+                    """.formatted(history, message);
+
             RouteDecision decision = chatClient.prompt()
                     .system(CLASSIFICATION_PROMPT)
-                    .user(message)
+                    .user(classificationInput)
                     .call()
                     .entity(RouteDecision.class, spec -> spec.validateSchema());
 

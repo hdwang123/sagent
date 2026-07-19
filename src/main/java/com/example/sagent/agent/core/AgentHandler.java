@@ -7,5 +7,5 @@ public interface AgentHandler {
 
     AgentType type();
 
-    HandlerResult handle(String message);
+    HandlerResult handle(String conversationId, String message);
 }
