@@ -2,15 +2,19 @@
 
 Sagent 是一个用于学习 Spring AI Agent 的示例项目。
 
-用户发送消息后，系统先调用大模型分类，再进入普通聊天、RAG 知识库检索或
-数据库查询流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型分类，再进入普通聊天、RAG 知识库检索、
+数据库查询或技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
 
 ## 功能
 
-- 大模型消息分类：`CHAT`、`RAG`、`DATABASE`
+- 大模型消息分类：`CHAT`、`RAG`、`DATABASE`、`SKILL`
 - OpenRouter 普通聊天
 - 本地 ONNX Embedding + `SimpleVectorStore` RAG
 - Spring AI Tool Calling + H2 数据库查询
+- SKILL 技能系统：支持多工具组合执行复杂任务
+  - ProductReportSkill：产品报告生成（查询数据 → 生成文档 → 压缩下载）
+  - WebPageDownloadSkill：网页下载处理（下载网页 → 生成文档 → 压缩下载）
+- 文件下载接口：支持生成的文档和压缩包下载
 - `MessageChatMemoryAdvisor` 多轮会话记忆
 - Vue 2 + Element UI 聊天测试页面
 - 返回路由类型、分类理由和 RAG 来源
@@ -38,15 +42,17 @@ flowchart TD
     D -->|"CHAT"| CH["普通聊天"]
     D -->|"RAG"| RA["本地向量检索 + 大模型回答"]
     D -->|"DATABASE"| DB["Tool Calling + H2 查询"]
+    D -->|"SKILL"| SK["技能执行（多工具组合）"]
     CH --> M["MessageChatMemoryAdvisor"]
     RA --> M
     DB --> M
+    SK --> M
     M --> A["AgentResponse"]
     A --> U
 ```
 
 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，
-避免把 `RouteDecision` 写入正式聊天记录。三个最终处理分支共享同一份会话记忆。
+避免把 `RouteDecision` 写入正式聊天记录。四个最终处理分支共享同一份会话记忆。
 
 ## 项目结构
 
@@ -59,8 +65,11 @@ src/main/java/com/example/sagent
 │  ├─ memory        会话记忆
 │  ├─ model         请求结果模型
 │  ├─ rag           RAG 检索
-│  └─ routing       消息分类
-└─ controller       HTTP 接口
+│  ├─ routing       消息分类
+│  └─ skill         技能系统
+│     ├─ skills     Skill 实现（ProductReportSkill、WebPageDownloadSkill）
+│     └─ tool       工具类（DocumentTool、CompressionTool、WebPageTool）
+└─ controller       HTTP 接口（ChatController、FileController）
 
 src/main/resources
 ├─ embedding        内嵌 ONNX Embedding 模型
@@ -133,6 +142,7 @@ http://localhost:8080/chat.html
 - 请求耗时展示
 - 停止请求
 - 清空页面和服务端会话记忆
+- 下载链接渲染（SKILL 生成的文件）
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
 
@@ -179,6 +189,22 @@ Content-Type: application/json
 DELETE /ai/conversations/demo-1
 ```
 
+### 文件下载
+
+```http
+GET /files/download/{fileName}
+```
+
+下载 SKILL 生成的文件（Markdown、文本、压缩包等）。
+
+### 列出文件
+
+```http
+GET /files/list
+```
+
+列出所有可下载的文件。
+
 ## 测试问题
 
 普通聊天：
@@ -202,6 +228,20 @@ What does WHO recommend to reduce dementia risk?
 查询价格不超过 70 元的产品。
 ```
 
+SKILL 产品报告：
+
+```text
+查询所有产品并生成报告文档。
+生成产品价格清单并压缩打包。
+```
+
+SKILL 网页下载：
+
+```text
+下载这个网页 https://example.com 并生成文档。
+抓取网页内容并转换为 Markdown。
+```
+
 多轮记忆：
 
 ```text
@@ -223,6 +263,7 @@ mvn test
 - 每个会话最多保留 20 条消息
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库 Tool 只提供查询方法，没有新增、修改或删除操作
+- SKILL 生成的文件保存在 `output` 目录，应用重启后会清空
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
 ## 许可证
