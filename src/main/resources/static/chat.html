@@ -400,6 +400,25 @@
             background: var(--danger);
         }
 
+        .download-link {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px 0;
+            color: var(--primary);
+            background: #e7f2ef;
+            border: 1px solid #c7ddd7;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .download-link:hover {
+            color: var(--primary-hover);
+            background: #d4ede7;
+            border-color: #8fb7ae;
+        }
+
         .composer-footer {
             display: flex;
             justify-content: space-between;
@@ -499,7 +518,7 @@
                             <div v-if="message.pending" class="typing" aria-label="正在生成">
                                 <span></span><span></span><span></span>
                             </div>
-                            <template v-else>{{ message.content }}</template>
+                            <div v-else class="message-text" v-html="formatContent(message.content)"></div>
                         </div>
                         <div v-if="!message.pending && (message.routeReason || (message.sources && message.sources.length))"
                              class="route-detail">
@@ -587,8 +606,26 @@
                 return {
                     CHAT: "普通聊天",
                     RAG: "RAG 检索",
-                    DATABASE: "数据库查询"
+                    DATABASE: "数据库查询",
+                    SKILL: "技能执行"
                 }[type] || type;
+            },
+            formatContent: function (content) {
+                if (!content) return "";
+                var escaped = String(content).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                var urlPattern = /(\/files\/download\/[^\s<>"']+)/g;
+                var createDownloadLink = function (rawUrl, label) {
+                    var punctuation = rawUrl.match(/[，。！？、；：）)\]}]+$/);
+                    var url = punctuation ? rawUrl.slice(0, -punctuation[0].length) : rawUrl;
+                    var suffix = punctuation ? punctuation[0] : "";
+                    return '<a href="' + encodeURI(url) + '" class="download-link" download>' + (label || url) + '</a>' + suffix;
+                };
+                escaped = escaped.replace(/\[([^\]\r\n]+)]\((\/files\/download\/[^\s<>"')]+)\)/g, function (_, label, url) {
+                    return createDownloadLink(url, label);
+                });
+                return escaped.replace(urlPattern, function (match) {
+                    return createDownloadLink(match);
+                });
             },
             sendMessage: async function () {
                 var content = this.input.trim();

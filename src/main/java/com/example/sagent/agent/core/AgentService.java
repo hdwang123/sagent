@@ -33,6 +33,7 @@ public class AgentService {
         }
 
         HandlerResult result = handler.handle(conversationId, message);
+        
         return new AgentResponse(
                 conversationId,
                 result.answer(),
