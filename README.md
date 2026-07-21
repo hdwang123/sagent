@@ -54,46 +54,6 @@ flowchart TD
 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，
 避免把 `RouteDecision` 写入正式聊天记录。四个最终处理分支共享同一份会话记忆。
 
-## 工具调用循环
-
-### Spring AI 自动 Tool Calling
-
-```mermaid
-flowchart TD
-    U[用户消息] --> L[LLM]
-    L -->|请求调用 tool1| M[Spring AI ToolCallingAdvisor]
-    M -->|自动执行| T1[tool1]
-    T1 -->|工具结果| M
-    M -->|自动回填 ToolResponseMessage| L
-    L -->|请求调用 tool2| M
-    M -->|自动执行| T2[tool2]
-    T2 -->|工具结果| M
-    M --> L
-    L -->|不再请求工具| R[最终回复用户]
-```
-
-Spring AI 负责工具循环、工具执行和工具结果回填；应用通常只需注册可用工具。
-
-### 自定义 Agent 循环
-
-```mermaid
-flowchart TD
-    U[用户消息] --> A[Agent 执行器]
-    A -->|携带 history| L[LLM]
-    L -->|ToolCall: 名称 + JSON 参数| A
-    A --> V{白名单、参数和权限校验}
-    V -->|通过| T[执行指定 tool]
-    V -->|拒绝| E[构造错误 ToolResponse]
-    T --> O[工具输出 JSON]
-    O --> H[写入 ToolResponseMessage]
-    E --> H
-    H --> A
-    L -->|无 ToolCall| R[最终回复用户]
-```
-
-自定义 Agent 由应用控制最大轮数、工具审批、重试、日志和中止策略；两种模式的核心链路都是
-`LLM → ToolCall → tool → ToolResponseMessage → LLM`。
-
 ## 项目结构
 
 ```text
@@ -305,3 +265,71 @@ mvn test
 - 数据库 Tool 只提供查询方法，没有新增、修改或删除操作
 - SKILL 生成的文件保存在 `output` 目录，应用重启后会清空
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
+
+## 附录：工具调用循环
+
+Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdvisor` 递归顾问，作为顾问链的一部分统一管理。
+
+### Spring AI 自动工具调用循环
+
+```mermaid
+flowchart TD
+    A[用户消息] --> B[AgentHandler]
+    B --> C[ChatClient]
+    C --> D[AdvisorChain]
+    D --> E[ToolCallingAdvisor]
+    E -->|注入工具定义| F[LLM]
+    F -->|返回工具调用请求| G[ToolCallingManager]
+    G -->|执行工具| H[Tool方法]
+    H -->|返回结果| G
+    G -->|生成响应消息| E
+    E -->|追加历史| F
+    F -->|有工具调用| G
+    F -->|无工具调用| I[最终回复用户]
+    I --> D
+    D --> B
+```
+
+**核心机制：**
+
+1. `ToolCallingAdvisor` 是递归顾问，通过 `callAdvisorChain.copy(this)` 创建子链进行循环调用
+2. `ChatClient` 自动注册 `ToolCallingAdvisor`（默认优先级 `HIGHEST_PRECEDENCE + 300`）
+3. 每次迭代：注入工具定义 → 调用 LLM → 检测工具调用 → 执行工具 → 回填结果 → 循环
+4. 停止条件：LLM 返回不含工具调用的最终响应
+
+**应用只需：**
+- 通过 `.tools()` 注册工具对象
+- 使用 `@Tool` 注解定义可调用方法
+
+### 自定义 Agent 循环（手动实现）
+
+```mermaid
+flowchart TD
+    U[用户消息] --> A[Agent执行器]
+    A -->|构建Prompt| L[LLM]
+    L -->|返回响应| A
+    A --> P{解析响应}
+    P -->|包含ToolCall| V{白名单校验}
+    P -->|最终回答| R[返回用户]
+    V -->|通过| T[执行工具]
+    V -->|拒绝| E[构造错误]
+    T --> O[工具输出]
+    E --> O
+    O --> H[追加响应消息]
+    H --> L
+```
+
+**手动实现步骤：**
+
+1. 构建包含系统提示和工具定义的 Prompt
+2. 调用 LLM 获取响应
+3. 解析响应中的 `tool_calls` 字段
+4. 校验工具名称（白名单）和参数合法性
+5. 反射或策略模式执行目标工具
+6. 将工具结果包装为 `ToolResponseMessage` 追加到对话历史
+7. 循环回到步骤2，直到 LLM 返回最终回答
+
+**适用场景：**
+- 需要自定义工具审批、权限控制、重试策略
+- 需要记录详细的工具调用日志和追踪
+- 需要与外部系统深度集成（如审批流程、熔断机制）
