@@ -54,6 +54,46 @@ flowchart TD
 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，
 避免把 `RouteDecision` 写入正式聊天记录。四个最终处理分支共享同一份会话记忆。
 
+## 工具调用循环
+
+### Spring AI 自动 Tool Calling
+
+```mermaid
+flowchart TD
+    U[用户消息] --> L[LLM]
+    L -->|请求调用 tool1| M[Spring AI ToolCallingAdvisor]
+    M -->|自动执行| T1[tool1]
+    T1 -->|工具结果| M
+    M -->|自动回填 ToolResponseMessage| L
+    L -->|请求调用 tool2| M
+    M -->|自动执行| T2[tool2]
+    T2 -->|工具结果| M
+    M --> L
+    L -->|不再请求工具| R[最终回复用户]
+```
+
+Spring AI 负责工具循环、工具执行和工具结果回填；应用通常只需注册可用工具。
+
+### 自定义 Agent 循环
+
+```mermaid
+flowchart TD
+    U[用户消息] --> A[Agent 执行器]
+    A -->|携带 history| L[LLM]
+    L -->|ToolCall: 名称 + JSON 参数| A
+    A --> V{白名单、参数和权限校验}
+    V -->|通过| T[执行指定 tool]
+    V -->|拒绝| E[构造错误 ToolResponse]
+    T --> O[工具输出 JSON]
+    O --> H[写入 ToolResponseMessage]
+    E --> H
+    H --> A
+    L -->|无 ToolCall| R[最终回复用户]
+```
+
+自定义 Agent 由应用控制最大轮数、工具审批、重试、日志和中止策略；两种模式的核心链路都是
+`LLM → ToolCall → tool → ToolResponseMessage → LLM`。
+
 ## 项目结构
 
 ```text
