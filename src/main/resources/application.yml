@@ -19,5 +19,4 @@ spring:
       api-key: ${OPENROUTER_API_KEY:not-configured}
       chat:
         base-url: https://openrouter.ai/api/v1
-        options:
-          model: ${OPENROUTER_MODEL:openrouter/free}
+        model: ${OPENROUTER_MODEL:openrouter/free}
