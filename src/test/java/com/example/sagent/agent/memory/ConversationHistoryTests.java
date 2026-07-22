@@ -1,5 +1,6 @@
 package com.example.sagent.agent.memory;
 
+import com.example.sagent.agent.base.memory.ConversationHistory;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;

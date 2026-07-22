@@ -1,5 +1,6 @@
 package com.example.sagent.agent.rag;
 
+import com.example.sagent.agent.agents.rag.VectorKnowledgeRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;

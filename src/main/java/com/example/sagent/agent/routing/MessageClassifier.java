@@ -1,8 +1,8 @@
 package com.example.sagent.agent.routing;
 
-import com.example.sagent.agent.memory.ConversationHistory;
-import com.example.sagent.agent.model.AgentType;
-import com.example.sagent.agent.model.RouteDecision;
+import com.example.sagent.agent.base.memory.ConversationHistory;
+import com.example.sagent.agent.base.model.AgentType;
+import com.example.sagent.agent.base.model.RouteDecision;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 

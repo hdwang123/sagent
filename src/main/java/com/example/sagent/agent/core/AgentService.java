@@ -1,9 +1,9 @@
 package com.example.sagent.agent.core;
 
-import com.example.sagent.agent.model.AgentResponse;
-import com.example.sagent.agent.model.AgentType;
-import com.example.sagent.agent.model.HandlerResult;
-import com.example.sagent.agent.model.RouteDecision;
+import com.example.sagent.agent.base.model.AgentResponse;
+import com.example.sagent.agent.base.model.AgentType;
+import com.example.sagent.agent.base.model.HandlerResult;
+import com.example.sagent.agent.base.model.RouteDecision;
 import com.example.sagent.agent.routing.MessageClassifier;
 import org.springframework.stereotype.Service;
 

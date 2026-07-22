@@ -1,7 +1,7 @@
 package com.example.sagent.agent.core;
 
-import com.example.sagent.agent.model.AgentType;
-import com.example.sagent.agent.model.HandlerResult;
+import com.example.sagent.agent.base.model.AgentType;
+import com.example.sagent.agent.base.model.HandlerResult;
 
 public interface AgentHandler {
 

@@ -1,8 +1,8 @@
 package com.example.sagent.controller;
 
 import com.example.sagent.agent.core.AgentService;
-import com.example.sagent.agent.model.AgentResponse;
-import com.example.sagent.agent.model.AgentType;
+import com.example.sagent.agent.base.model.AgentResponse;
+import com.example.sagent.agent.base.model.AgentType;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.ChatMemory;
 

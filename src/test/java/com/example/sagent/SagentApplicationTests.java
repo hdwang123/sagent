@@ -1,7 +1,7 @@
 package com.example.sagent;
 
-import com.example.sagent.agent.database.ProductDatabaseTools;
-import com.example.sagent.agent.rag.VectorKnowledgeRetriever;
+import com.example.sagent.agent.agents.database.ProductDatabaseTools;
+import com.example.sagent.agent.agents.rag.VectorKnowledgeRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;

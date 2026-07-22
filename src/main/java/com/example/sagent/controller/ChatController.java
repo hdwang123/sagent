@@ -1,7 +1,7 @@
 package com.example.sagent.controller;
 
 import com.example.sagent.agent.core.AgentService;
-import com.example.sagent.agent.model.AgentResponse;
+import com.example.sagent.agent.base.model.AgentResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
