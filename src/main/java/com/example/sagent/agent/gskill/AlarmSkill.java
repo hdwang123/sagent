@@ -1,6 +1,5 @@
 package com.example.sagent.agent.gskill;
 
-import com.example.sagent.agent.skill.skills.Skill;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Component;

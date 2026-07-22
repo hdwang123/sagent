@@ -3,7 +3,6 @@ package com.example.sagent.agent.gskill;
 import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
-import com.example.sagent.agent.skill.skills.Skill;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
