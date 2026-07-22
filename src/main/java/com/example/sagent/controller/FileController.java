@@ -1,96 +1,90 @@
 package com.example.sagent.controller;
 
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.ContentDisposition;
+import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.*;
 
-import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets;
+import java.util.List;
 
-import static org.springframework.http.HttpStatus.NOT_FOUND;
-
+/**
+ * 文件控制器
+ * 提供文件下载和列出文件的RESTful API接口
+ */
 @RestController
 @RequestMapping("/files")
 public class FileController {
 
+    /**
+     * 文件存储目录
+     */
     private static final String OUTPUT_DIR = "output";
 
-    @GetMapping("/download/{fileName}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
-        validateFileName(fileName);
-        
-        Path filePath = Paths.get(OUTPUT_DIR).resolve(fileName).normalize();
-        
-        if (!filePath.startsWith(Paths.get(OUTPUT_DIR))) {
-            throw new ResponseStatusException(NOT_FOUND, "文件不存在");
+    /**
+     * 下载文件
+     * 根据文件名从output目录下载文件
+     *
+     * @param filename 文件名
+     * @return 文件资源
+     */
+    @GetMapping("/download/{filename}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
+        try {
+            Path filePath = Paths.get(OUTPUT_DIR).resolve(filename).normalize();
+            if (!filePath.startsWith(Paths.get(OUTPUT_DIR))) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            Resource resource = new UrlResource(filePath.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) {
+                contentType = "application/octet-stream";
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                    .body(resource);
+        } catch (MalformedURLException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
         }
-        
-        File file = filePath.toFile();
-        if (!file.exists()) {
-            throw new ResponseStatusException(NOT_FOUND, "文件不存在");
-        }
-        
-        Resource resource = new FileSystemResource(file);
-        
-        MediaType contentType = resolveContentType(filePath);
-        ContentDisposition contentDisposition = ContentDisposition.attachment()
-                .filename(file.getName(), StandardCharsets.UTF_8)
-                .build();
-        
-        return ResponseEntity.ok()
-                .contentType(contentType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
-                .body(resource);
     }
 
+    /**
+     * 列出文件
+     * 获取output目录下所有文件列表
+     *
+     * @return 文件名称列表
+     */
     @GetMapping("/list")
-    public java.util.List<String> listFiles() {
+    public ResponseEntity<List<String>> listFiles() {
         try {
             Path outputPath = Paths.get(OUTPUT_DIR);
             if (!Files.exists(outputPath)) {
-                return java.util.List.of();
+                return ResponseEntity.ok(List.of());
             }
-            return Files.list(outputPath)
+
+            List<String> files = Files.list(outputPath)
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
                     .toList();
-        } catch (Exception e) {
-            return java.util.List.of();
-        }
-    }
 
-    private void validateFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            throw new ResponseStatusException(NOT_FOUND, "文件名不能为空");
-        }
-        if (fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) {
-            throw new ResponseStatusException(NOT_FOUND, "无效的文件名");
-        }
-    }
-
-    private MediaType resolveContentType(Path filePath) {
-        String fileName = filePath.getFileName().toString().toLowerCase();
-        if (fileName.endsWith(".zip")) {
-            return MediaType.parseMediaType("application/zip");
-        }
-        try {
-            String detectedType = Files.probeContentType(filePath);
-            return detectedType == null
-                    ? MediaType.APPLICATION_OCTET_STREAM
-                    : MediaType.parseMediaType(detectedType);
-        } catch (Exception e) {
-            return MediaType.APPLICATION_OCTET_STREAM;
+            return ResponseEntity.ok(files);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

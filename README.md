@@ -1,25 +1,24 @@
 # Sagent
 
-Sagent 是一个用于学习 Spring AI Agent 的示例项目。
+Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
 
-用户发送消息后，系统先调用大模型分类，再进入普通聊天、RAG 知识库检索、
-数据库查询、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、数据库查询、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
 
-## 功能
+## 功能特性
 
-- 大模型消息分类：`CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL`
-- OpenRouter 普通聊天
-- 本地 ONNX Embedding + `SimpleVectorStore` RAG
-- Spring AI Tool Calling + H2 数据库查询
-- SKILL 技能系统：支持多工具组合执行复杂任务
-  - ProductReportSkill：产品报告生成（查询数据 → 生成文档 → 压缩下载）
-  - WebPageDownloadSkill：网页下载处理（下载网页 → 生成文档 → 压缩下载）
-- GSKILL 通用技能系统：由大模型决定调用工具计划，自由组合多个工具使用
-  - AlarmSkill：获取时间、设置闹钟
-- 文件下载接口：支持生成的文档和压缩包下载
-- `MessageChatMemoryAdvisor` 多轮会话记忆
-- Vue 2 + Element UI 聊天测试页面
-- 返回路由类型、分类理由和 RAG 来源
+- **智能消息分类**：支持 `CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL` 五种消息类型
+- **普通聊天**：基于 OpenRouter 的多轮对话能力
+- **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
+- **数据库查询**：Spring AI Tool Calling + H2 内存数据库查询
+- **SKILL 企业固定技能**：支持多工具组合执行复杂预定义任务
+  - `ProductReportSkill`：产品报告生成（查询数据 → 生成文档 → 压缩下载）
+  - `WebPageDownloadSkill`：网页下载处理（下载网页 → 生成文档 → 压缩下载）
+- **GSKILL 通用技能**：由大模型决定调用工具计划，自由组合多个工具使用
+  - `AlarmSkill`：获取时间、设置闹钟
+- **文件管理**：支持生成的文档和压缩包下载
+- **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
+- **前端界面**：Vue 2 + Element UI 聊天测试页面
+- **详细响应**：返回路由类型、分类理由和 RAG 来源
 
 ## 技术栈
 
@@ -38,7 +37,7 @@ Sagent 是一个用于学习 Spring AI Agent 的示例项目。
 
 ```mermaid
 flowchart TD
-    U["用户 / chat.html"] --> C["POST /ai/chat"]
+    U["用户 / chat.html"] --> C["POST /api/chat"]
     C --> R["大模型消息分类"]
     R --> D{"RouteDecision"}
     D -->|"CHAT"| CH["普通聊天"]
@@ -55,32 +54,55 @@ flowchart TD
     A --> U
 ```
 
-分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，
-避免把 `RouteDecision` 写入正式聊天记录。五个最终处理分支共享同一份会话记忆。
+**设计要点**：
+- 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录
+- 五个最终处理分支共享同一份会话记忆
+- 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 
 ## 项目结构
 
 ```text
 src/main/java/com/example/sagent
 ├─ agent
-│  ├─ agents        Agent 实现层
-│  │  ├─ chat       普通聊天
-│  │  ├─ database   数据库 Handler 和 Tools
-│  │  ├─ gskill     通用技能系统（GSKILL）
-│  │  ├─ rag        RAG 检索
-│  │  └─ skill      技能系统
-│  │     ├─ skills  Skill 实现（ProductReportSkill、WebPageDownloadSkill）
-│  │     └─ tool    工具类（DocumentTool、CompressionTool、WebPageTool）
-│  ├─ base          基础模块
-│  │  ├─ memory     会话记忆
-│  │  └─ model      请求结果模型
-│  ├─ core          Agent 调度
-│  └─ routing       消息分类
-└─ controller       HTTP 接口（ChatController、FileController）
+│  ├─ core          Agent 核心调度层
+│  │  ├─ AgentHandler      处理器接口
+│  │  └─ AgentService      Agent 服务（消息路由）
+│  ├─ handlers      Agent 处理器实现
+│  │  ├─ ChatHandler       普通聊天处理器
+│  │  ├─ DatabaseHandler   数据库查询处理器
+│  │  ├─ RagHandler        RAG 检索处理器
+│  │  ├─ SkillHandler      SKILL 企业技能处理器
+│  │  └─ GSkillHandler     GSKILL 通用技能处理器
+│  ├─ skills        技能实现
+│  │  ├─ Skill             SKILL 接口
+│  │  ├─ GSkill            GSKILL 接口
+│  │  ├─ ProductReportSkill    产品报告技能
+│  │  ├─ WebPageDownloadSkill  网页下载技能
+│  │  └─ AlarmSkill            闹钟技能
+│  ├─ tools         工具类
+│  │  ├─ ProductDatabaseTools  产品数据库工具
+│  │  ├─ VectorKnowledgeRetriever  向量知识库检索器
+│  │  ├─ DocumentTool          文档生成工具
+│  │  ├─ CompressionTool       文件压缩工具
+│  │  └─ WebPageTool           网页下载工具
+│  ├─ memory        会话记忆
+│  │  ├─ ChatMemoryConfiguration  聊天记忆配置
+│  │  └─ ConversationHistory     会话历史管理
+│  ├─ model         数据模型
+│  │  ├─ AgentType         Agent 类型枚举
+│  │  ├─ AgentResponse     响应模型
+│  │  ├─ HandlerResult     处理器结果
+│  │  ├─ RouteDecision     路由决策
+│  │  └─ Product           产品实体
+│  └─ routing       消息路由
+│     └─ MessageClassifier  消息分类器
+└─ controller       HTTP 接口
+   ├─ ChatController   聊天接口
+   └─ FileController   文件管理接口
 
 src/main/resources
 ├─ embedding        内嵌 ONNX Embedding 模型
-├─ knowledge        本地知识库和英文新闻
+├─ knowledge        本地知识库文档
 ├─ static           chat.html 及前端依赖
 ├─ schema.sql       H2 表结构
 ├─ data.sql         H2 演示数据
@@ -99,7 +121,7 @@ src/main/resources
 
 ### 配置 OpenRouter
 
-必须设置：
+必须设置环境变量：
 
 ```text
 OPENROUTER_API_KEY
@@ -111,7 +133,7 @@ OPENROUTER_API_KEY
 OPENROUTER_MODEL
 ```
 
-Windows PowerShell：
+**Windows PowerShell**：
 
 ```powershell
 $env:OPENROUTER_API_KEY = "你的真实Key"
@@ -119,7 +141,7 @@ $env:OPENROUTER_MODEL = "openrouter/free"
 mvn spring-boot:run
 ```
 
-macOS / Linux：
+**macOS / Linux**：
 
 ```bash
 export OPENROUTER_API_KEY="你的真实Key"
@@ -127,11 +149,10 @@ export OPENROUTER_MODEL="openrouter/free"
 mvn spring-boot:run
 ```
 
-使用 IDEA 时，将 Project SDK 设置为 JDK 21，并在
-`Run -> Edit Configurations -> Environment variables` 中添加环境变量。
-如果在 IDEA 启动后才修改系统或用户环境变量，需要重启 IDEA。
+**IDEA 配置**：
+将 Project SDK 设置为 JDK 21，并在 `Run -> Edit Configurations -> Environment variables` 中添加环境变量。
 
-不要把真实 API Key 写入 `application.yml` 或提交到 Git。
+**安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
 
 ## 聊天页面
 
@@ -141,8 +162,7 @@ mvn spring-boot:run
 http://localhost:8080/chat.html
 ```
 
-页面支持：
-
+页面功能：
 - 多轮 Agent 对话
 - 路由类型和分类原因展示
 - RAG 来源展示
@@ -153,22 +173,19 @@ http://localhost:8080/chat.html
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
 
-## API
+## API 接口
 
 ### 发送消息
 
 ```http
-POST /ai/chat
+POST /api/chat?conversationId=demo-1
 Content-Type: application/json
 ```
 
-请求：
+请求体：
 
 ```json
-{
-  "conversationId": "demo-1",
-  "message": "OPENROUTER_API_KEY 在哪里配置？"
-}
+"OPENROUTER_API_KEY 在哪里配置？"
 ```
 
 响应：
@@ -181,20 +198,16 @@ Content-Type: application/json
   "routeReason": "用户询问项目配置",
   "sources": [
     "sagent-overview.md"
-  ]
+  ],
+  "latencyMs": 1500
 }
 ```
 
-`conversationId` 可以省略，服务端会自动生成并在响应中返回。后续请求复用相同 ID
-即可继续同一段对话。
+**参数说明**：
+- `conversationId`（可选）：会话 ID，不传时服务端自动生成
+- `message`：用户消息内容
 
-当前接口一次性返回完整 JSON，不是 SSE 流式响应。
-
-### 清空会话记忆
-
-```http
-DELETE /ai/conversations/demo-1
-```
+**注意**：当前接口一次性返回完整 JSON，不是 SSE 流式响应。
 
 ### 文件下载
 
@@ -212,15 +225,15 @@ GET /files/list
 
 列出所有可下载的文件。
 
-## 测试问题
+## 测试示例
 
-普通聊天：
+### 普通聊天
 
 ```text
 你好，请介绍一下你自己。
 ```
 
-RAG：
+### RAG 知识库查询
 
 ```text
 OPENROUTER_API_KEY 在哪里配置？
@@ -228,35 +241,35 @@ Why was 1998 SH2 reclassified as a comet?
 What does WHO recommend to reduce dementia risk?
 ```
 
-数据库：
+### 数据库查询
 
 ```text
 数据库里有多少个产品？
 查询价格不超过 70 元的产品。
 ```
 
-SKILL 产品报告：
+### SKILL 产品报告
 
 ```text
 查询所有产品并生成报告文档。
 生成产品价格清单并压缩打包。
 ```
 
-SKILL 网页下载：
+### SKILL 网页下载
 
 ```text
 下载这个网页 https://example.com 并生成文档。
 抓取网页内容并转换为 Markdown。
 ```
 
-GSKILL 通用技能：
+### GSKILL 通用技能
 
 ```text
 现在几点了？
 帮我设置一个5分钟后的闹钟。
 ```
 
-多轮记忆：
+### 多轮记忆
 
 ```text
 第一轮：介绍一下 NASA 的那篇新闻。
@@ -269,7 +282,10 @@ GSKILL 通用技能：
 mvn test
 ```
 
-测试覆盖 Agent 路由、会话 ID、聊天记忆、RAG 检索、本地 Embedding 和 H2 查询。
+测试覆盖：
+- 消息分类器测试（`MessageClassifierTests`）
+- 产品数据库工具测试（`ProductDatabaseToolsTests`）
+- 向量知识库检索器测试（`VectorKnowledgeRetrieverTests`）
 
 ## 注意事项
 
@@ -286,19 +302,22 @@ Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdv
 
 ![工具调用循环](doc/toolCallingLoop.png)
 
-**核心机制：**
+**核心机制**：
 
 1. `ToolCallingAdvisor` 是递归顾问，通过 `callAdvisorChain.copy(this)` 创建子链进行循环调用
 2. `ChatClient` 自动注册 `ToolCallingAdvisor`（默认优先级 `HIGHEST_PRECEDENCE + 300`）
 3. 循环过程：注入工具定义 → 调用LLM → 执行工具 → 回填结果 → **再次调用LLM** → 循环
 4. 停止条件：LLM 返回不含工具调用的最终响应
 
-**关键流程：**
+**关键流程**：
 - 循环的主体是**调用工具**，每次循环都会调用LLM来决定是否继续调用工具
 - 每次工具调用后，结果会追加到对话历史，然后**再次调用LLM**
 - 最终LLM根据所有工具结果，生成自然语言回复给用户
 
-**应用只需：**
+**应用只需**：
 - 通过 `.tools()` 注册工具对象
 - 使用 `@Tool` 注解定义可调用方法
 
+## License
+
+MIT License

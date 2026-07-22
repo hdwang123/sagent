@@ -1,8 +1,8 @@
 package com.example.sagent.agent.routing;
 
-import com.example.sagent.agent.base.memory.ConversationHistory;
-import com.example.sagent.agent.base.model.AgentType;
-import com.example.sagent.agent.base.model.RouteDecision;
+import com.example.sagent.agent.memory.ConversationHistory;
+import com.example.sagent.agent.model.AgentType;
+import com.example.sagent.agent.model.RouteDecision;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -10,28 +10,30 @@ import org.springframework.stereotype.Service;
 public class MessageClassifier {
 
     private static final String CLASSIFICATION_PROMPT_TEMPLATE = """
-            你是消息路由器，负责判断用户消息应进入哪个处理流程。
-                        
-            可用的处理类型：
-            - CHAT：闲聊、写作、翻译、总结、通用知识或不需要访问本系统数据的问题。
-            - RAG：询问 Sagent 项目说明、Agent 路由规则、内部知识文档、使用手册，
-              或询问本地知识库收录的英文新闻内容。
-            - DATABASE：需要查询产品数量、产品名称、价格、库存、分类等结构化业务数据，
-              且仅需要查询数据，不需要生成文档或文件。
-              示例："查一下产品列表"、"产品A的价格是多少"、"统计产品数量" → DATABASE
-            - SKILL：需要执行多步骤任务，涉及多个工具的组合使用，如生成报告、下载网页、文件操作等。
-            - GSKILL: 通用技能，自由组合多个工具使用，比如：查询时间、设置闹钟等
-                        
-            判断原则：
-            1. 如果用户只问数据查询，选DATABASE；
-            2. 如果需要查询后生成文件、或需要文件操作（生成、压缩等），选SKILL；
-            3. 其他情况根据内容选择GSKILL或RAG或CHAT；
-                        
-                        
-            返回格式要求：
-            - 必须选择且只能选择 CHAT、RAG、DATABASE、SKILL、GSKILL 之一作为type；
-            - 用简短中文说明reason。
-            """;
+            你是专业的消息分类器，必须严格按照以下规则分类：
+
+            分类规则：
+            1. DATABASE：涉及产品查询、价格、库存、数量、分类等业务数据查询，仅返回数据不生成文件
+               关键词：产品、价格、库存、数量、查询列表、统计
+               示例："查产品列表" → DATABASE，"产品A价格" → DATABASE
+
+            2. SKILL：需要生成报告、下载网页、压缩文件、文档操作等预定义流程
+               关键词：生成报告、下载、压缩、保存文件、处理文件
+               示例："生成产品报告" → SKILL，"下载网页" → SKILL
+
+            3. RAG：需要检索内部文档、项目说明、使用手册、知识库内容
+               关键词：Sagent、项目说明、路由规则、知识库、文档、手册
+               示例："Sagent是什么" → RAG，"路由规则" → RAG
+
+            4. GSKILL：需要设置闹钟、查询时间等工具调用
+               关键词：闹钟、设置提醒、查询时间
+               示例："设明天8点闹钟" → GSKILL，"现在几点" → GSKILL
+
+            5. CHAT：其他所有情况，包括闲聊、写作、翻译、通用知识等
+
+            严格按照优先级判断：DATABASE > SKILL > RAG > GSKILL > CHAT
+            必须在type字段返回CHAT/RAG/DATABASE/SKILL/GSKILL之一，reason字段简要说明分类理由。
+            """.trim();
 
     private final ChatClient chatClient;
     private final ConversationHistory conversationHistory;
