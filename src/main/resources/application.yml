@@ -21,3 +21,11 @@ spring:
         base-url: https://openrouter.ai/api/v1
         options:
           model: ${OPENROUTER_MODEL:openrouter/free}
+logging:
+  level:
+    org:
+      springframework:
+        ai: DEBUG
+        chat:
+         client:
+           advisor: DEBUG

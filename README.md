@@ -3,17 +3,19 @@
 Sagent 是一个用于学习 Spring AI Agent 的示例项目。
 
 用户发送消息后，系统先调用大模型分类，再进入普通聊天、RAG 知识库检索、
-数据库查询或技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+数据库查询、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
 
 ## 功能
 
-- 大模型消息分类：`CHAT`、`RAG`、`DATABASE`、`SKILL`
+- 大模型消息分类：`CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL`
 - OpenRouter 普通聊天
 - 本地 ONNX Embedding + `SimpleVectorStore` RAG
 - Spring AI Tool Calling + H2 数据库查询
 - SKILL 技能系统：支持多工具组合执行复杂任务
   - ProductReportSkill：产品报告生成（查询数据 → 生成文档 → 压缩下载）
   - WebPageDownloadSkill：网页下载处理（下载网页 → 生成文档 → 压缩下载）
+- GSKILL 通用技能系统：由大模型决定调用工具计划，自由组合多个工具使用
+  - AlarmSkill：获取时间、设置闹钟
 - 文件下载接口：支持生成的文档和压缩包下载
 - `MessageChatMemoryAdvisor` 多轮会话记忆
 - Vue 2 + Element UI 聊天测试页面
@@ -43,25 +45,29 @@ flowchart TD
     D -->|"RAG"| RA["本地向量检索 + 大模型回答"]
     D -->|"DATABASE"| DB["Tool Calling + H2 查询"]
     D -->|"SKILL"| SK["技能执行（多工具组合）"]
+    D -->|"GSKILL"| GS["通用技能执行（自由组合工具）"]
     CH --> M["MessageChatMemoryAdvisor"]
     RA --> M
     DB --> M
     SK --> M
+    GS --> M
     M --> A["AgentResponse"]
     A --> U
 ```
 
 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，
-避免把 `RouteDecision` 写入正式聊天记录。四个最终处理分支共享同一份会话记忆。
+避免把 `RouteDecision` 写入正式聊天记录。五个最终处理分支共享同一份会话记忆。
 
 ## 项目结构
 
 ```text
 src/main/java/com/example/sagent
 ├─ agent
+│  ├─ agent
 │  ├─ chat          普通聊天
 │  ├─ core          Agent 调度
 │  ├─ database      数据库 Handler 和 Tools
+│  ├─ gskill        通用技能系统（GSKILL）
 │  ├─ memory        会话记忆
 │  ├─ model         请求结果模型
 │  ├─ rag           RAG 检索
@@ -240,6 +246,13 @@ SKILL 网页下载：
 ```text
 下载这个网页 https://example.com 并生成文档。
 抓取网页内容并转换为 Markdown。
+```
+
+GSKILL 通用技能：
+
+```text
+现在几点了？
+帮我设置一个5分钟后的闹钟。
 ```
 
 多轮记忆：

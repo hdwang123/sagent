@@ -4,5 +4,10 @@ public enum AgentType {
     CHAT,
     RAG,
     DATABASE,
-    SKILL
+    SKILL,
+
+    /**
+     * 通用技能
+     */
+    GSKILL
 }

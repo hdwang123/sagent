@@ -14,7 +14,7 @@ public class MessageClassifier {
 
     private static final String CLASSIFICATION_PROMPT_TEMPLATE = """
             你是消息路由器，负责判断用户消息应进入哪个处理流程。
-            
+                        
             可用的处理类型：
             - CHAT：闲聊、写作、翻译、总结、通用知识或不需要访问本系统数据的问题。
             - RAG：询问 Sagent 项目说明、Agent 路由规则、内部知识文档、使用手册，
@@ -23,14 +23,16 @@ public class MessageClassifier {
               且仅需要查询数据，不需要生成文档或文件。
               示例："查一下产品列表"、"产品A的价格是多少"、"统计产品数量" → DATABASE
             - SKILL：需要执行多步骤任务，涉及多个工具的组合使用，如生成报告、下载网页、文件操作等。
-            
+            - GSKILL: 通用技能，自由组合多个工具使用，比如：查询时间、设置闹钟等
+                        
             判断原则：
             1. 如果用户只问数据查询，选DATABASE；
             2. 如果需要查询后生成文件、或需要文件操作（生成、压缩等），选SKILL；
-            3. 其他情况根据内容选择CHAT或RAG；
-            
+            3. 其他情况根据内容选择GSKILL或RAG或CHAT；
+                        
+                        
             返回格式要求：
-            - 必须选择且只能选择 CHAT、RAG、DATABASE、SKILL 之一作为type；
+            - 必须选择且只能选择 CHAT、RAG、DATABASE、SKILL、GSKILL 之一作为type；
             - 用简短中文说明reason。
             """;
 
@@ -67,7 +69,7 @@ public class MessageClassifier {
             if (decision == null || decision.type() == null) {
                 return fallbackDecision();
             }
-            
+
             return decision;
         } catch (RuntimeException exception) {
             return fallbackDecision();
