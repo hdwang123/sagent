@@ -38,7 +38,7 @@ public class DocumentTool {
      * @param content  文档内容
      * @return 文档下载链接
      */
-    @Tool(description = "生成Markdown文档，将内容写入指定文件")
+    @Tool(description = "生成Markdown文档，将内容写入指定文件。该工具会创建一个.md文件，将提供的文本内容保存到output目录下，并返回可下载的链接。适用于生成报告、文档、笔记等格式化文本内容。")
     public String generateMarkdownDocument(
             @ToolParam(description = "文件名，不含扩展名") String fileName,
             @ToolParam(description = "文档内容") String content
@@ -68,7 +68,7 @@ public class DocumentTool {
      * @param content  文件内容
      * @return 文件下载链接
      */
-    @Tool(description = "生成文本文件，将内容写入指定文件")
+    @Tool(description = "生成文本文件，将内容写入指定文件。该工具会创建一个.txt文件，将提供的文本内容保存到output目录下，并返回可下载的链接。适用于生成纯文本内容、日志文件、配置信息等。")
     public String generateTextFile(
             @ToolParam(description = "文件名，不含扩展名") String fileName,
             @ToolParam(description = "文件内容") String content
@@ -95,7 +95,7 @@ public class DocumentTool {
      *
      * @return 文件名称列表
      */
-    @Tool(description = "列出output目录下的所有文件")
+    @Tool(description = "列出output目录下的所有文件。该工具会扫描output目录，返回该目录下所有文件的名称列表。适用于查看已生成的文档和文件，方便用户了解当前可用的下载文件。")
     public List<String> listOutputFiles() {
         try {
             Path outputPath = Paths.get(OUTPUT_DIR);

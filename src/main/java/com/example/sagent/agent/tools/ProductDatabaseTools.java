@@ -39,7 +39,7 @@ public class ProductDatabaseTools {
      *
      * @return 产品列表
      */
-    @Tool(description = "查询全部产品，最多返回20条")
+    @Tool(description = "查询全部产品，返回数据库中所有产品信息，最多返回20条记录，包含产品ID、名称、分类、价格和库存信息")
     public List<Product> listProducts() {
         return jdbcClient.sql("""
                         select %s
@@ -58,7 +58,7 @@ public class ProductDatabaseTools {
      * @param keyword 产品名称关键词
      * @return 产品列表
      */
-    @Tool(description = "按产品名称模糊查询产品，最多返回20条")
+    @Tool(description = "按产品名称模糊查询产品，根据关键词模糊匹配产品名称，返回匹配的产品列表，最多返回20条记录，包含产品ID、名称、分类、价格和库存信息")
     public List<Product> findProductsByName(
             @ToolParam(description = "产品名称关键词") String keyword
     ) {
@@ -81,7 +81,7 @@ public class ProductDatabaseTools {
      * @param maxPrice 最高价格
      * @return 产品列表
      */
-    @Tool(description = "查询价格不高于指定金额的产品，最多返回20条")
+    @Tool(description = "按最高价格查询产品，查询价格不高于指定金额的产品，返回价格小于等于指定金额的产品列表，最多返回20条记录，包含产品ID、名称、分类、价格和库存信息")
     public List<Product> findProductsByMaxPrice(
             @ToolParam(description = "最高价格，必须是大于等于0的数字") BigDecimal maxPrice
     ) {
@@ -107,7 +107,7 @@ public class ProductDatabaseTools {
      * @param id 产品ID
      * @return 产品信息（可选）
      */
-    @Tool(description = "按产品ID查询单个产品")
+    @Tool(description = "按产品ID查询单个产品，根据唯一的产品ID精确查询产品信息，返回产品的完整信息包括产品ID、名称、分类、价格和库存，如果产品不存在则返回空")
     public Optional<Product> findProductById(
             @ToolParam(description = "产品ID，必须是正整数") Long id
     ) {
@@ -126,7 +126,7 @@ public class ProductDatabaseTools {
      *
      * @return 产品总数
      */
-    @Tool(description = "统计产品总数量")
+    @Tool(description = "统计数据库中产品的总数量，返回所有产品的总数，返回值为整数类型，表示当前数据库中所有产品的记录条数")
     public int countProducts() {
         return jdbcClient.sql("select count(*) from products")
                 .query(Integer.class)

@@ -37,7 +37,7 @@ public class CompressionTool {
      * @param zipFileName 压缩包文件名，不含扩展名
      * @return 压缩包下载链接或错误信息
      */
-    @Tool(description = "压缩output目录下的文件生成ZIP压缩包")
+    @Tool(description = "将output目录下的指定文件压缩成ZIP格式的压缩包，支持多个文件打包，返回压缩包的下载链接。fileNames参数为要压缩的文件列表，使用逗号分隔；zipFileName参数为压缩包文件名，不需要包含.zip扩展名")
     public String compressFiles(
             @ToolParam(description = "要压缩的文件列表，用逗号分隔，仅支持output目录下的文件") String fileNames,
             @ToolParam(description = "压缩包文件名，不含扩展名") String zipFileName

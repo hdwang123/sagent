@@ -45,7 +45,7 @@ public class AlarmSkill implements GSkill {
      *
      * @return 当前时间字符串
      */
-    @Tool(description = "以用户所在时区获取当前时间")
+    @Tool(description = "以用户所在时区获取当前时间，返回包含时区信息的ISO-8601格式时间字符串")
     String getCurrentDateTime() {
         String time = LocalDateTime.now().atZone(LocaleContextHolder.getTimeZone().toZoneId()).toString();
         System.out.println("获取时间：" + time);
@@ -58,7 +58,7 @@ public class AlarmSkill implements GSkill {
      *
      * @param time 闹钟时间，格式ISO-8601
      */
-    @Tool(description = "按照提供的时间给用户设置闹钟,时间格式ISO-8601")
+    @Tool(description = "按照提供的时间给用户设置闹钟，时间格式为ISO-8601格式（例如：2024-01-15T09:30:00），设置成功后会在指定时间提醒用户")
     void setAlarm(String time) {
         LocalDateTime alarmTime = LocalDateTime.parse(time, DateTimeFormatter.ISO_DATE_TIME);
         System.out.println("闹钟已设置，时间：" + alarmTime);

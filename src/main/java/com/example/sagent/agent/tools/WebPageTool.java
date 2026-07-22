@@ -88,7 +88,7 @@ public class WebPageTool {
      * @param fileName HTML文件名，含扩展名
      * @return HTML文件内容或错误信息
      */
-    @Tool(description = "读取已下载的网页HTML文件内容")
+    @Tool(description = "读取已下载的网页HTML文件内容，从output目录中读取指定的HTML文件并返回其内容")
     public String readWebPageContent(
             @ToolParam(description = "HTML文件名，含扩展名") String fileName
     ) {
@@ -114,7 +114,7 @@ public class WebPageTool {
      *
      * @return 文件名称列表
      */
-    @Tool(description = "列出output目录下的所有文件")
+    @Tool(description = "列出output目录下的所有文件，返回output目录中所有已下载的HTML文件名称列表")
     public List<String> listOutputFiles() {
         try {
             Path outputPath = Paths.get(OUTPUT_DIR);

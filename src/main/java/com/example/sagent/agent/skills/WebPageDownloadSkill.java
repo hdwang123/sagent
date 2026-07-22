@@ -70,7 +70,7 @@ public class WebPageDownloadSkill implements Skill {
      * @param compress 是否压缩打包
      * @return 文档下载链接
      */
-    @Tool(description = "下载网页并生成文档，提供下载链接")
+    @Tool(description = "下载指定URL的网页内容，根据指定格式生成文档（支持Markdown或纯文本格式），可选择是否压缩打包。返回生成的文档或压缩包的下载链接")
     public String downloadAndProcessWebPage(
             @ToolParam(description = "网页URL地址") String url,
             @ToolParam(description = "文件名称") String fileName,
