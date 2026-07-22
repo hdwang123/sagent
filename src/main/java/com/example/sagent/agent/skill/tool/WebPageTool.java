@@ -22,7 +22,7 @@ public class WebPageTool {
     private static final String OUTPUT_DIR = "output";
     private static final String DOWNLOAD_BASE_URL = "/files/download/";
 
-    @Tool(description = "下载网页内容并保存为HTML文件")
+    @Tool(description = "下载指定URL的网页内容，将HTML内容保存到output目录中，返回文件的下载链接。适用于保存网页以便后续分析或查看")
     public String downloadWebPage(
             @ToolParam(description = "网页URL地址") String url,
             @ToolParam(description = "保存的文件名，不含扩展名") String fileName
@@ -62,7 +62,7 @@ public class WebPageTool {
         }
     }
 
-    @Tool(description = "读取网页HTML文件内容")
+    @Tool(description = "读取已下载的网页HTML文件内容，根据文件名从output目录中读取对应的HTML文件并返回其文本内容。支持读取由downloadWebPage工具下载的HTML文件，返回完整的HTML文本内容供分析和查看")
     public String readWebPageContent(
             @ToolParam(description = "HTML文件名，含扩展名") String fileName
     ) {

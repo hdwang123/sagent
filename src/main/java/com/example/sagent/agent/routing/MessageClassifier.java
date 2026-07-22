@@ -3,11 +3,8 @@ package com.example.sagent.agent.routing;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
-import com.example.sagent.agent.skill.skills.Skill;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class MessageClassifier {

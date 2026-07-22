@@ -279,6 +279,25 @@ mvn test
 - SKILL 生成的文件保存在 `output` 目录，应用重启后会清空
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
-## 许可证
+## 附录：工具调用循环
 
-本项目使用 [MIT License](LICENSE)。
+Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdvisor` 递归顾问，作为顾问链的一部分统一管理。
+
+![工具调用循环](doc/toolCallingLoop.png)
+
+**核心机制：**
+
+1. `ToolCallingAdvisor` 是递归顾问，通过 `callAdvisorChain.copy(this)` 创建子链进行循环调用
+2. `ChatClient` 自动注册 `ToolCallingAdvisor`（默认优先级 `HIGHEST_PRECEDENCE + 300`）
+3. 循环过程：注入工具定义 → 调用LLM → 执行工具 → 回填结果 → **再次调用LLM** → 循环
+4. 停止条件：LLM 返回不含工具调用的最终响应
+
+**关键流程：**
+- 循环的主体是**调用工具**，每次循环都会调用LLM来决定是否继续调用工具
+- 每次工具调用后，结果会追加到对话历史，然后**再次调用LLM**
+- 最终LLM根据所有工具结果，生成自然语言回复给用户
+
+**应用只需：**
+- 通过 `.tools()` 注册工具对象
+- 使用 `@Tool` 注解定义可调用方法
+
