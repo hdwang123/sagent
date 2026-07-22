@@ -63,18 +63,19 @@ flowchart TD
 ```text
 src/main/java/com/example/sagent
 ├─ agent
-│  ├─ agent
-│  ├─ chat          普通聊天
+│  ├─ agents        Agent 实现层
+│  │  ├─ chat       普通聊天
+│  │  ├─ database   数据库 Handler 和 Tools
+│  │  ├─ gskill     通用技能系统（GSKILL）
+│  │  ├─ rag        RAG 检索
+│  │  └─ skill      技能系统
+│  │     ├─ skills  Skill 实现（ProductReportSkill、WebPageDownloadSkill）
+│  │     └─ tool    工具类（DocumentTool、CompressionTool、WebPageTool）
+│  ├─ base          基础模块
+│  │  ├─ memory     会话记忆
+│  │  └─ model      请求结果模型
 │  ├─ core          Agent 调度
-│  ├─ database      数据库 Handler 和 Tools
-│  ├─ gskill        通用技能系统（GSKILL）
-│  ├─ memory        会话记忆
-│  ├─ model         请求结果模型
-│  ├─ rag           RAG 检索
-│  ├─ routing       消息分类
-│  └─ skill         技能系统
-│     ├─ skills     Skill 实现（ProductReportSkill、WebPageDownloadSkill）
-│     └─ tool       工具类（DocumentTool、CompressionTool、WebPageTool）
+│  └─ routing       消息分类
 └─ controller       HTTP 接口（ChatController、FileController）
 
 src/main/resources
