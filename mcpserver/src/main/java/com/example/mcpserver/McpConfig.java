@@ -1,6 +1,5 @@
-package com.example.sagent.config;
+package com.example.mcpserver;
 
-import com.example.sagent.controller.McpServerController;
 import org.springframework.ai.mcp.MethodToolCallbackProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -1,4 +1,4 @@
-package com.example.sagent.controller;
+package com.example.mcpserver;
 
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
