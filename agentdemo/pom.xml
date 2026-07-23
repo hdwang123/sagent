@@ -10,8 +10,8 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>sagent</artifactId>
-    <name>sagent-core</name>
+    <artifactId>agentdemo</artifactId>
+    <name>agentdemo</name>
 
     <dependencies>
         <dependency>

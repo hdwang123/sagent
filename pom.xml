@@ -19,7 +19,7 @@
 
     <modules>
         <module>mcpserver</module>
-        <module>sagent</module>
+        <module>agentdemo</module>
     </modules>
 
     <properties>
@@ -43,7 +43,7 @@
             </dependency>
             <dependency>
                 <groupId>com.example</groupId>
-                <artifactId>sagent</artifactId>
+                <artifactId>agentdemo</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
