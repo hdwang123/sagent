@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,7 +31,7 @@ public class McpHandler implements AgentHandler {
     public McpHandler(
             ChatClient.Builder chatClientBuilder,
             MessageChatMemoryAdvisor memoryAdvisor,
-            SyncMcpToolCallbackProvider mcpToolCallbackProvider
+            @Lazy SyncMcpToolCallbackProvider mcpToolCallbackProvider
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())

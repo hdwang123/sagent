@@ -8,5 +8,8 @@ spring:
     mcp:
       server:
         enabled: true
+        protocol: STREAMABLE
         name: mcpserver
         version: 1.0.0
+        streamable-http:
+          mcp-endpoint: /mcp

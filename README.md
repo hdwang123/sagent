@@ -300,7 +300,7 @@ mvn test
 
 Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdvisor` 递归顾问，作为顾问链的一部分统一管理。
 
-![工具调用循环](doc/toolCallingLoop.png)
+![工具调用循环](agentdemo/doc/toolCallingLoop.png)
 
 **核心机制**：
 
