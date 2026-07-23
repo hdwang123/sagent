@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>sagent</artifactId>
-    <name>sagent</name>
+    <name>sagent-core</name>
 
     <dependencies>
         <dependency>
