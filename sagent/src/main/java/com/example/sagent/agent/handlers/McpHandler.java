@@ -7,35 +7,35 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.mcp.ToolCallbackProvider;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.stereotype.Component;
 
 /**
  * MCP处理器
- * 处理通过本地MCP工具调用的消息
+ * 通过MCP协议调用外部MCP Server提供的工具
  */
 @Component
 public class McpHandler implements AgentHandler {
 
     private static final String SYSTEM_PROMPT = """
-            你是MCP工具执行助手，可以调用系统提供的工具完成任务。
-            必须调用提供的工具完成任务，不能自行编造结果。
+            你是MCP工具执行助手，可以调用MCP服务器提供的工具完成任务。
+            必须调用提供的MCP工具完成任务，不能自行编造结果。
             如果现有工具无法满足需求，请明确说明当前支持的工具范围。
             使用中文简洁回答，并说明已执行的操作。
             """;
 
     private final ChatClient chatClient;
-    private final ToolCallbackProvider toolCallbackProvider;
+    private final SyncMcpToolCallbackProvider mcpToolCallbackProvider;
 
     public McpHandler(
             ChatClient.Builder chatClientBuilder,
             MessageChatMemoryAdvisor memoryAdvisor,
-            ToolCallbackProvider toolCallbackProvider
+            SyncMcpToolCallbackProvider mcpToolCallbackProvider
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())
                 .build();
-        this.toolCallbackProvider = toolCallbackProvider;
+        this.mcpToolCallbackProvider = mcpToolCallbackProvider;
     }
 
     @Override
@@ -48,7 +48,7 @@ public class McpHandler implements AgentHandler {
         String answer = chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(message)
-                .tools(toolCallbackProvider.getToolCallbacks())
+                .tools(mcpToolCallbackProvider.getToolCallbacks())
                 .advisors(advisor -> advisor.param(
                         ChatMemory.CONVERSATION_ID,
                         conversationId
