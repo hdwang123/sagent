@@ -8,16 +8,7 @@ import org.springframework.ai.mcp.client.common.autoconfigure.annotations.McpCli
 import org.springframework.ai.mcp.client.httpclient.autoconfigure.StreamableHttpHttpClientTransportAutoConfiguration;
 import org.springframework.ai.mcp.client.httpclient.autoconfigure.SseHttpClientTransportAutoConfiguration;
 
-@SpringBootApplication(
-        scanBasePackages = "com.example",
-        exclude = {
-            McpClientAutoConfiguration.class,
-            McpToolCallbackAutoConfiguration.class,
-            McpClientAnnotationScannerAutoConfiguration.class,
-            StreamableHttpHttpClientTransportAutoConfiguration.class,
-            SseHttpClientTransportAutoConfiguration.class
-        }
-)
+@SpringBootApplication
 public class SagentApplication {
 
     public static void main(String[] args) {

@@ -34,5 +34,5 @@ logging:
       springframework:
         ai: DEBUG
         chat:
-         client:
-           advisor: DEBUG
+          client:
+            advisor: DEBUG

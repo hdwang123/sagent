@@ -45,11 +45,11 @@ public class McpServerController {
             @McpToolParam(description = "城市名称", required = true) String city) {
         Map<String, Object> result = new HashMap<>();
         Map<String, Double> temperatures = new HashMap<>();
-        temperatures.put("Beijing", 28.5);
-        temperatures.put("Shanghai", 30.2);
-        temperatures.put("Guangzhou", 32.8);
-        temperatures.put("Shenzhen", 33.5);
-        temperatures.put("Chengdu", 25.3);
+        temperatures.put("北京", 28.5);
+        temperatures.put("上海", 30.2);
+        temperatures.put("杭州", 32.8);
+        temperatures.put("深圳", 33.5);
+        temperatures.put("成都", 25.3);
 
         Double temp = temperatures.get(city);
         if (temp != null) {

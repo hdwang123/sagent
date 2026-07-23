@@ -31,7 +31,7 @@ public class McpHandler implements AgentHandler {
     public McpHandler(
             ChatClient.Builder chatClientBuilder,
             MessageChatMemoryAdvisor memoryAdvisor,
-            @Lazy SyncMcpToolCallbackProvider mcpToolCallbackProvider
+            SyncMcpToolCallbackProvider mcpToolCallbackProvider
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())
