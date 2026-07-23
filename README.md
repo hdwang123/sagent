@@ -133,11 +133,32 @@ OPENROUTER_API_KEY
 OPENROUTER_MODEL
 ```
 
+**安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
+
+### 启动 MCP Server
+
+**测试 MCP 功能前，必须先启动 MCP Server**：
+
+```bash
+cd mcpserver
+mvn spring-boot:run
+```
+
+MCP Server 默认监听 `http://localhost:8081/mcp`，提供以下工具：
+- `calculator`: 计算器（支持加减乘除）
+- `get_weather`: 获取指定城市天气（北京/上海/广州/深圳/成都）
+- `get_stock_price`: 获取股票实时价格（AAPL/GOOGL/MSFT/TSLA/NVDA/BABA/JD）
+- `get_system_info`: 获取系统信息
+- `echo`: 回显消息（测试用）
+
+### 启动 Agent Demo
+
 **Windows PowerShell**：
 
 ```powershell
 $env:OPENROUTER_API_KEY = "你的真实Key"
 $env:OPENROUTER_MODEL = "openrouter/free"
+cd agentdemo
 mvn spring-boot:run
 ```
 
@@ -146,13 +167,12 @@ mvn spring-boot:run
 ```bash
 export OPENROUTER_API_KEY="你的真实Key"
 export OPENROUTER_MODEL="openrouter/free"
+cd agentdemo
 mvn spring-boot:run
 ```
 
 **IDEA 配置**：
 将 Project SDK 设置为 JDK 21，并在 `Run -> Edit Configurations -> Environment variables` 中添加环境变量。
-
-**安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
 
 ## 聊天页面
 
