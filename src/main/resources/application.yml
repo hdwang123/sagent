@@ -22,7 +22,15 @@ spring:
         options:
           model: ${OPENROUTER_MODEL:openrouter/free}
     mcp:
+      server:
+        enabled: true
+        name: sagent-mcp-server
+        version: 1.0.0
       client:
+        streamable-http:
+          connections:
+            local:
+              url: http://localhost:8080/mcp
         stdio:
           enabled: false
         sse:
