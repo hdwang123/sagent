@@ -20,20 +20,25 @@ public class McpServerController {
         Map<String, Object> result = new HashMap<>();
         double answer;
         switch (operation.toLowerCase()) {
-            case "add" -> answer = num1 + num2;
-            case "subtract" -> answer = num1 - num2;
-            case "multiply" -> answer = num1 * num2;
-            case "divide" -> {
+            case "add":
+                answer = num1 + num2;
+                break;
+            case "subtract":
+                answer = num1 - num2;
+                break;
+            case "multiply":
+                answer = num1 * num2;
+                break;
+            case "divide":
                 if (num2 == 0) {
                     result.put("error", "除数不能为0");
                     return result;
                 }
                 answer = num1 / num2;
-            }
-            default -> {
+                break;
+            default:
                 result.put("error", "不支持的运算类型: " + operation);
                 return result;
-            }
         }
         result.put("result", answer);
         result.put("expression", num1 + " " + operation + " " + num2);
