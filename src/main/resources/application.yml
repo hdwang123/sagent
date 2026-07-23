@@ -21,6 +21,12 @@ spring:
         base-url: https://openrouter.ai/api/v1
         options:
           model: ${OPENROUTER_MODEL:openrouter/free}
+    mcp:
+      client:
+        stdio:
+          enabled: false
+        sse:
+          enabled: false
 logging:
   level:
     org:

@@ -29,10 +29,14 @@ public class MessageClassifier {
                关键词：闹钟、设置提醒、查询时间
                示例："设明天8点闹钟" → GSKILL，"现在几点" → GSKILL
 
-            5. CHAT：其他所有情况，包括闲聊、写作、翻译、通用知识等
+            5. MCP：需要调用外部工具、执行外部命令、访问外部服务
+               关键词：执行命令、运行脚本、调用工具、外部服务
+               示例："执行ping命令" → MCP，"调用外部工具" → MCP
 
-            严格按照优先级判断：DATABASE > SKILL > RAG > GSKILL > CHAT
-            必须在type字段返回CHAT/RAG/DATABASE/SKILL/GSKILL之一，reason字段简要说明分类理由。
+            6. CHAT：其他所有情况，包括闲聊、写作、翻译、通用知识等
+
+            严格按照优先级判断：DATABASE > SKILL > RAG > GSKILL > MCP > CHAT
+            必须在type字段返回CHAT/RAG/DATABASE/SKILL/GSKILL/MCP之一，reason字段简要说明分类理由。
             """.trim();
 
     private final ChatClient chatClient;

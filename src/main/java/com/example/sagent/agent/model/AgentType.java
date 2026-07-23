@@ -29,5 +29,10 @@ public enum AgentType {
     /**
      * 通用技能：自由组合调用各种工具
      */
-    GSKILL
+    GSKILL,
+
+    /**
+     * MCP：调用外部 MCP 服务器提供的工具
+     */
+    MCP
 }
