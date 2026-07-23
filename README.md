@@ -6,7 +6,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 
 ## 功能特性
 
-- **智能消息分类**：支持 `CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL` 五种消息类型
+- **智能消息分类**：支持 `CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
 - **普通聊天**：基于 OpenRouter 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **数据库查询**：Spring AI Tool Calling + H2 内存数据库查询
@@ -15,6 +15,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
   - `WebPageDownloadSkill`：网页下载处理（下载网页 → 生成文档 → 压缩下载）
 - **GSKILL 通用技能**：由大模型决定调用工具计划，自由组合多个工具使用
   - `AlarmSkill`：获取时间、设置闹钟
+- **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
 - **文件管理**：支持生成的文档和压缩包下载
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
 - **前端界面**：Vue 2 + Element UI 聊天测试页面
@@ -45,11 +46,13 @@ flowchart TD
     D -->|"DATABASE"| DB["Tool Calling + H2 查询"]
     D -->|"SKILL"| SK["技能执行（多工具组合）"]
     D -->|"GSKILL"| GS["通用技能执行（自由组合工具）"]
+    D -->|"MCP"| MC["MCP 外部服务 Tool Calling"]
     CH --> M["MessageChatMemoryAdvisor"]
     RA --> M
     DB --> M
     SK --> M
     GS --> M
+    MC --> M
     M --> A["AgentResponse"]
     A --> U
 ```
@@ -72,7 +75,8 @@ src/main/java/com/example/sagent
 │  │  ├─ DatabaseHandler   数据库查询处理器
 │  │  ├─ RagHandler        RAG 检索处理器
 │  │  ├─ SkillHandler      SKILL 企业技能处理器
-│  │  └─ GSkillHandler     GSKILL 通用技能处理器
+│  │  ├─ GSkillHandler     GSKILL 通用技能处理器
+│  │  └─ McpHandler        MCP 外部服务处理器
 │  ├─ skills        技能实现
 │  │  ├─ Skill             SKILL 接口
 │  │  ├─ GSkill            GSKILL 接口
@@ -135,9 +139,11 @@ OPENROUTER_MODEL
 
 **安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
 
-### 启动 MCP Server
+### 启动 MCP Server（可选）
 
-**测试 MCP 功能前，必须先启动 MCP Server**：
+MCP 功能采用**延迟初始化**设计：agentdemo 启动时不会连接 MCP Server，只在首次收到 MCP 类型请求时才建立连接。因此无需 MCP 时可直接启动 agentdemo。
+
+如需测试 MCP 功能，先启动 MCP Server：
 
 ```bash
 cd mcpserver
@@ -150,6 +156,8 @@ MCP Server 默认监听 `http://localhost:8081/mcp`，提供以下工具：
 - `get_stock_price`: 获取股票实时价格（AAPL/GOOGL/MSFT/TSLA/NVDA/BABA/JD）
 - `get_system_info`: 获取系统信息
 - `echo`: 回显消息（测试用）
+
+MCP Server 地址通过 `mcp.server.url` 配置（默认 `http://localhost:8081/mcp`），可在 `application.yml` 中覆盖。
 
 ### 启动 Agent Demo
 
@@ -289,6 +297,15 @@ What does WHO recommend to reduce dementia risk?
 帮我设置一个5分钟后的闹钟。
 ```
 
+### MCP 外部服务
+
+```text
+帮我算一下 123 + 456
+查询北京的天气
+苹果股价现在多少？
+获取系统信息
+```
+
 ### 多轮记忆
 
 ```text
@@ -314,6 +331,7 @@ mvn test
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库 Tool 只提供查询方法，没有新增、修改或删除操作
 - SKILL 生成的文件保存在 `output` 目录，应用重启后会清空
+- MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
 ## 附录：工具调用循环

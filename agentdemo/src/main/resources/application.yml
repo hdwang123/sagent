@@ -21,12 +21,9 @@ spring:
         base-url: https://openrouter.ai/api/v1
         options:
           model: ${OPENROUTER_MODEL:openrouter/free}
-    mcp:
-      client:
-        streamable-http:
-          connections:
-            mcpserver:
-              url: http://localhost:8081/mcp
+mcp:
+  server:
+    url: http://localhost:8081/mcp
 
 logging:
   level:
