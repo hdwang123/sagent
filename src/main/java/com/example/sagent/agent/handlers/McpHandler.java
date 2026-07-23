@@ -7,7 +7,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.mcp.client.SyncMcpToolCallbackProvider;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -48,7 +48,7 @@ public class McpHandler implements AgentHandler {
         String answer = chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(message)
-                .tools(mcpToolCallbackProvider.getCallbacks())
+                .tools(mcpToolCallbackProvider.getToolCallbacks())
                 .advisors(advisor -> advisor.param(
                         ChatMemory.CONVERSATION_ID,
                         conversationId
