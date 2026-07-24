@@ -630,7 +630,8 @@
             },
             formatContent: function (content) {
                 if (!content) return "";
-                var escaped = String(content).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                var escaped = String(content).trim().replace(/^["']|["']$/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 var urlPattern = /(\/files\/download\/[^\s<>"'`，。！？、；：）)\]}]+)/g;
                 var imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
                 var createDownloadLink = function (rawUrl, label) {
@@ -640,10 +641,12 @@
                     var lowerUrl = url.toLowerCase();
                     var isImage = imageExtensions.some(function (ext) { return lowerUrl.endsWith(ext); });
                     if (isImage) {
-                        return '<span class="image-wrapper"><img src="' + encodeURI(url.replace('/download/', '/preview/')) + '" class="image-preview" alt="点击下载图片" data-url="' + encodeURI(url) + '"></span>' + suffix;
+                        return '<br/><span class="image-wrapper"><img src="' + encodeURI(url.replace('/download/', '/preview/')) + '" class="image-preview" alt="点击下载图片" data-url="' + encodeURI(url) + '"></span>' + suffix;
                     }
                     return '<a href="' + encodeURI(url) + '" class="download-link" download>' + (label || url) + '</a>' + suffix;
                 };
+                escaped = escaped.replace(/\\n/g, '<br/>').replace(/\n/g, '<br/>')
+                escaped = escaped.replace(/(https?:\/\/[^\s<>"'`，。！？、；：）)\]}\\]+)/g, '<a href="$1" target="_blank">$1</a>')
                 escaped = escaped.replace(/\[([^\]\r\n]+)]\((\/files\/download\/[^\s<>"')]+)\)/g, function (_, label, url) {
                     return createDownloadLink(url, label);
                 });

@@ -228,11 +228,7 @@ public class WebPageDownloadSkill implements Skill {
                 TimeUnit.SECONDS.sleep(2);
 
                 String pageTitle = page.title();
-                String safeTitle = pageTitle.replaceAll("[^a-zA-Z0-9._-]", "_");
-                if (safeTitle.isEmpty() || safeTitle.length() > 100) {
-                    safeTitle = "screenshot_" + System.currentTimeMillis();
-                }
-                String fileName = safeTitle + ".png";
+                String fileName = "screenshot_" + System.currentTimeMillis() + ".png";
                 Path screenshotPath = folderPath.resolve(fileName);
 
                 page.screenshot(new com.microsoft.playwright.Page.ScreenshotOptions()
@@ -240,10 +236,8 @@ public class WebPageDownloadSkill implements Skill {
                         .setPath(screenshotPath)
                         .setType(com.microsoft.playwright.options.ScreenshotType.PNG));
 
-                String result = String.format("网页截图完成：\n" +
-                        "网页标题: %s\n" +
-                        "下载链接: %s",
-                        pageTitle, DOWNLOAD_BASE_URL + folderName + "/" + fileName);
+                String result = String.format("网页：%s\n网站：%s\n\n截图：%s",
+                        pageTitle, url, DOWNLOAD_BASE_URL + folderName + "/" + fileName);
 
                 if (compress) {
                     compressFiles(folderName, folderName + "_screenshot");
