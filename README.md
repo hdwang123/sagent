@@ -6,17 +6,16 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 
 ## 功能特性
 
-- **智能消息分类**：支持 `CHAT`、`RAG`、`DATABASE`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
+- **智能消息分类**：支持 `CHAT`、`RAG`、`SKILL`、`GSKILL`、`MCP` 五种消息类型
 - **普通聊天**：基于 OpenRouter 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
-- **数据库查询**：Spring AI Tool Calling + H2 内存数据库查询
-- **SKILL 企业固定技能**：支持多工具组合执行复杂预定义任务
-  - `ProductReportSkill`：产品报告生成（查询数据 → 生成文档 → 压缩下载）
-  - `WebPageDownloadSkill`：网页下载处理（下载网页 → 生成文档 → 压缩下载）
-- **GSKILL 通用技能**：由大模型决定调用工具计划，自由组合多个工具使用
+- **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
+  - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
+- **GSKILL 通用技能**：由大模型决定调用工具计划，支持多轮工具调用循环
+  - `DataBaseSkill`：H2 内存数据库查询
   - `AlarmSkill`：获取时间、设置闹钟
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
-- **文件管理**：支持生成的文档和压缩包下载
+- **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
 - **前端界面**：Vue 2 + Element UI 聊天测试页面
 - **详细响应**：返回路由类型、分类理由和 RAG 来源
@@ -43,13 +42,11 @@ flowchart TD
     R --> D{"RouteDecision"}
     D -->|"CHAT"| CH["普通聊天"]
     D -->|"RAG"| RA["本地向量检索 + 大模型回答"]
-    D -->|"DATABASE"| DB["Tool Calling + H2 查询"]
-    D -->|"SKILL"| SK["技能执行（多工具组合）"]
-    D -->|"GSKILL"| GS["通用技能执行（自由组合工具）"]
+    D -->|"SKILL"| SK["技能执行（单次工具调用）"]
+    D -->|"GSKILL"| GS["通用技能执行（多轮工具调用）"]
     D -->|"MCP"| MC["MCP 外部服务 Tool Calling"]
     CH --> M["MessageChatMemoryAdvisor"]
     RA --> M
-    DB --> M
     SK --> M
     GS --> M
     MC --> M
@@ -60,7 +57,8 @@ flowchart TD
 **设计要点**：
 - 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录
 - 五个最终处理分支共享同一份会话记忆
-- 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
+- SKILL 单次调用单一工具，不进入工具调用循环
+- GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 
 ## 项目结构
 
@@ -72,7 +70,6 @@ src/main/java/com/example/sagent
 │  │  └─ AgentService      Agent 服务（消息路由）
 │  ├─ handlers      Agent 处理器实现
 │  │  ├─ ChatHandler       普通聊天处理器
-│  │  ├─ DatabaseHandler   数据库查询处理器
 │  │  ├─ RagHandler        RAG 检索处理器
 │  │  ├─ SkillHandler      SKILL 企业技能处理器
 │  │  ├─ GSkillHandler     GSKILL 通用技能处理器
@@ -80,15 +77,13 @@ src/main/java/com/example/sagent
 │  ├─ skills        技能实现
 │  │  ├─ Skill             SKILL 接口
 │  │  ├─ GSkill            GSKILL 接口
-│  │  ├─ ProductReportSkill    产品报告技能
-│  │  ├─ WebPageDownloadSkill  网页下载技能
-│  │  └─ AlarmSkill            闹钟技能
+│  │  ├─ DataBaseSkill     数据库查询技能（GSKILL）
+│  │  ├─ WebPageDownloadSkill  网页下载技能（SKILL）
+│  │  └─ AlarmSkill            闹钟技能（GSKILL）
 │  ├─ tools         工具类
-│  │  ├─ ProductDatabaseTools  产品数据库工具
 │  │  ├─ VectorKnowledgeRetriever  向量知识库检索器
-│  │  ├─ DocumentTool          文档生成工具
 │  │  ├─ CompressionTool       文件压缩工具
-│  │  └─ WebPageTool           网页下载工具
+│  │  └─ WebPageTool           网页下载工具（截图、下载内容、下载媒体）
 │  ├─ memory        会话记忆
 │  │  ├─ ChatMemoryConfiguration  聊天记忆配置
 │  │  └─ ConversationHistory     会话历史管理
@@ -197,7 +192,7 @@ http://localhost:8080/chat.html
 - 请求耗时展示
 - 停止请求
 - 清空页面和服务端会话记忆
-- 下载链接渲染（SKILL 生成的文件）
+- 下载链接渲染（SKILL 生成的文件，图片显示缩略图）
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
 
@@ -243,7 +238,7 @@ Content-Type: application/json
 GET /files/download/{fileName}
 ```
 
-下载 SKILL 生成的文件（Markdown、文本、压缩包等）。
+下载 SKILL 生成的文件（Markdown、文本、图片、压缩包等）。支持子目录路径（如 `/files/download/folderName/file.png`）。
 
 ### 列出文件
 
@@ -251,7 +246,7 @@ GET /files/download/{fileName}
 GET /files/list
 ```
 
-列出所有可下载的文件。
+列出所有可下载的文件，包含子目录路径。
 
 ## 测试示例
 
@@ -269,24 +264,19 @@ Why was 1998 SH2 reclassified as a comet?
 What does WHO recommend to reduce dementia risk?
 ```
 
-### 数据库查询
+### 数据库查询（GSKILL）
 
 ```text
 数据库里有多少个产品？
 查询价格不超过 70 元的产品。
 ```
 
-### SKILL 产品报告
-
-```text
-查询所有产品并生成报告文档。
-生成产品价格清单并压缩打包。
-```
-
 ### SKILL 网页下载
 
 ```text
 下载这个网页 https://example.com 并生成文档。
+截取百度首页的截图。
+下载网页中的图片。
 抓取网页内容并转换为 Markdown。
 ```
 
@@ -330,7 +320,7 @@ mvn test
 - 每个会话最多保留 20 条消息
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库 Tool 只提供查询方法，没有新增、修改或删除操作
-- SKILL 生成的文件保存在 `output` 目录，应用重启后会清空
+- SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
