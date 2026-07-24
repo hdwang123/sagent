@@ -640,7 +640,7 @@
                     var lowerUrl = url.toLowerCase();
                     var isImage = imageExtensions.some(function (ext) { return lowerUrl.endsWith(ext); });
                     if (isImage) {
-                        return '<a href="' + encodeURI(url) + '" download><img src="' + encodeURI(url) + '" class="image-preview" alt="点击下载图片"></a>' + suffix;
+                        return '<span class="image-wrapper"><img src="' + encodeURI(url.replace('/download/', '/preview/')) + '" class="image-preview" alt="点击下载图片" data-url="' + encodeURI(url) + '"></span>' + suffix;
                     }
                     return '<a href="' + encodeURI(url) + '" class="download-link" download>' + (label || url) + '</a>' + suffix;
                 };
@@ -755,6 +755,23 @@
                 this.$nextTick(function () {
                     this.$refs.input.focus();
                 });
+            }
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        var img = e.target.closest('.image-preview');
+        if (img) {
+            e.preventDefault();
+            var url = img.getAttribute('data-url');
+            if (url) {
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = '';
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
         }
     });

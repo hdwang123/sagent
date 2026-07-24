@@ -67,6 +67,38 @@ public class FileController {
         }
     }
 
+    @GetMapping("/preview/{*filename}")
+    public ResponseEntity<Resource> previewFile(@PathVariable String filename) {
+        try {
+            String cleanFilename = filename;
+            if (cleanFilename.startsWith("/") || cleanFilename.startsWith("\\")) {
+                cleanFilename = cleanFilename.substring(1);
+            }
+            Path filePath = OUTPUT_PATH.resolve(cleanFilename).normalize();
+            if (!filePath.startsWith(OUTPUT_PATH)) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            Resource resource = new UrlResource(filePath.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) {
+                contentType = "application/octet-stream";
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .body(resource);
+        } catch (MalformedURLException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     /**
      * 列出文件
      * 获取output目录下所有文件列表

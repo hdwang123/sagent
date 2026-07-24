@@ -467,7 +467,7 @@ public class WebPageDownloadSkill implements Skill {
             if (successCount > 0) {
                 result += "下载链接:\n";
                 for (String f : downloadedFiles) {
-                    result += "- " + f + ": " + DOWNLOAD_BASE_URL + folderName + "/" + f + "\n";
+                    result += "- " + f + ": " + DOWNLOAD_BASE_URL + folderName + "/" + f + ";";
                 }
             }
 
