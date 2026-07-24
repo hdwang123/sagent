@@ -15,18 +15,18 @@ spring:
         tokenizer:
           uri: classpath:/embedding/all-MiniLM-L6-v2/tokenizer.json
     openai:
-#      base-url: https://api.deepseek.com/v1
-#      api-key: ${DEEPSEEK_API_KEY:not-configured}
-#      chat:
-#        base-url: https://api.deepseek.com/v1
-#        options:
-#          model: deepseek-v4-flash
-      base-url: https://openrouter.ai/api/v1
-      api-key: ${OPENROUTER_API_KEY:not-configured}
+      base-url: https://api.deepseek.com/v1
+      api-key: ${DEEPSEEK_API_KEY:not-configured}
       chat:
-        base-url: https://openrouter.ai/api/v1
+        base-url: https://api.deepseek.com/v1
         options:
-          model: ${OPENROUTER_MODEL:openrouter/free}
+          model: deepseek-v4-flash
+#      base-url: https://openrouter.ai/api/v1
+#      api-key: ${OPENROUTER_API_KEY:not-configured}
+#      chat:
+#        base-url: https://openrouter.ai/api/v1
+#        options:
+#          model: ${OPENROUTER_MODEL:openrouter/free}
 mcp:
   server:
     url: http://localhost:8081/mcp

@@ -2,12 +2,12 @@
 
 Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
 
-用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、数据库查询、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、技能执行或通用技能执行流程。聊天模型通过 DeepSeek 调用，Embedding 模型在本地 JVM 中运行。
 
 ## 功能特性
 
 - **智能消息分类**：支持 `CHAT`、`RAG`、`SKILL`、`GSKILL`、`MCP` 五种消息类型
-- **普通聊天**：基于 OpenRouter 的多轮对话能力
+- **普通聊天**：基于 DeepSeek 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
@@ -27,7 +27,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 | JDK | 21 |
 | Spring Boot | 4.1.0 |
 | Spring AI | 2.0.0 |
-| OpenRouter | OpenAI 兼容聊天接口 |
+| DeepSeek | OpenAI 兼容聊天接口 |
 | Transformers | 本地运行 ONNX Embedding |
 | SimpleVectorStore | 内存向量库 |
 | H2 | 内存数据库 |
@@ -81,9 +81,7 @@ src/main/java/com/example/sagent
 │  │  ├─ WebPageDownloadSkill  网页下载技能（SKILL）
 │  │  └─ AlarmSkill            闹钟技能（GSKILL）
 │  ├─ tools         工具类
-│  │  ├─ VectorKnowledgeRetriever  向量知识库检索器
-│  │  ├─ CompressionTool       文件压缩工具
-│  │  └─ WebPageTool           网页下载工具（截图、下载内容、下载媒体）
+│  │  └─ VectorKnowledgeRetriever  向量知识库检索器
 │  ├─ memory        会话记忆
 │  │  ├─ ChatMemoryConfiguration  聊天记忆配置
 │  │  └─ ConversationHistory     会话历史管理
@@ -114,22 +112,16 @@ src/main/resources
 
 - JDK 21
 - Maven 3.9+
-- OpenRouter API Key
+- DeepSeek API Key
 
 不需要安装 Ollama、Python、Node.js、MySQL 或 Redis。
 
-### 配置 OpenRouter
+### 配置 DeepSeek
 
 必须设置环境变量：
 
 ```text
-OPENROUTER_API_KEY
-```
-
-可选指定模型：
-
-```text
-OPENROUTER_MODEL
+DEEPSEEK_API_KEY
 ```
 
 **安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
@@ -159,8 +151,7 @@ MCP Server 地址通过 `mcp.server.url` 配置（默认 `http://localhost:8081/
 **Windows PowerShell**：
 
 ```powershell
-$env:OPENROUTER_API_KEY = "你的真实Key"
-$env:OPENROUTER_MODEL = "openrouter/free"
+$env:DEEPSEEK_API_KEY = "你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -168,8 +159,7 @@ mvn spring-boot:run
 **macOS / Linux**：
 
 ```bash
-export OPENROUTER_API_KEY="你的真实Key"
-export OPENROUTER_MODEL="openrouter/free"
+export DEEPSEEK_API_KEY="你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -208,7 +198,7 @@ Content-Type: application/json
 请求体：
 
 ```json
-"OPENROUTER_API_KEY 在哪里配置？"
+"DEEPSEEK_API_KEY 在哪里配置？"
 ```
 
 响应：
@@ -216,7 +206,7 @@ Content-Type: application/json
 ```json
 {
   "conversationId": "demo-1",
-  "answer": "项目从 OPENROUTER_API_KEY 环境变量读取 API Key。",
+  "answer": "项目从 DEEPSEEK_API_KEY 环境变量读取 API Key。",
   "type": "RAG",
   "routeReason": "用户询问项目配置",
   "sources": [
@@ -235,10 +225,18 @@ Content-Type: application/json
 ### 文件下载
 
 ```http
-GET /files/download/{fileName}
+GET /files/download/{*filename}
 ```
 
-下载 SKILL 生成的文件（Markdown、文本、图片、压缩包等）。支持子目录路径（如 `/files/download/folderName/file.png`）。
+下载 SKILL 生成的文件（Markdown、文本、图片、压缩包等），会触发浏览器下载。支持子目录路径（如 `/files/download/folderName/file.png`）。
+
+### 文件预览
+
+```http
+GET /files/preview/{*filename}
+```
+
+预览文件（不触发下载），主要用于图片缩略图展示。支持子目录路径。
 
 ### 列出文件
 
@@ -259,7 +257,7 @@ GET /files/list
 ### RAG 知识库查询
 
 ```text
-OPENROUTER_API_KEY 在哪里配置？
+DEEPSEEK_API_KEY 在哪里配置？
 Why was 1998 SH2 reclassified as a comet?
 What does WHO recommend to reduce dementia risk?
 ```
