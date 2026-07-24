@@ -419,6 +419,23 @@
             border-color: #8fb7ae;
         }
 
+        .image-preview {
+            display: inline-block;
+            max-width: 200px;
+            max-height: 150px;
+            margin: 4px 8px 4px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .image-preview:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-color: var(--primary);
+        }
+
         .composer-footer {
             display: flex;
             justify-content: space-between;
@@ -614,11 +631,17 @@
             formatContent: function (content) {
                 if (!content) return "";
                 var escaped = String(content).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                var urlPattern = /(\/files\/download\/[^<>\s]+)/g;
+                var urlPattern = /(\/files\/download\/[^\s<>"'`，。！？、；：）)\]}]+)/g;
+                var imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
                 var createDownloadLink = function (rawUrl, label) {
                     var punctuation = rawUrl.match(/[，。！？、；：）)\]}]+$/);
                     var url = punctuation ? rawUrl.slice(0, -punctuation[0].length) : rawUrl;
                     var suffix = punctuation ? punctuation[0] : "";
+                    var lowerUrl = url.toLowerCase();
+                    var isImage = imageExtensions.some(function (ext) { return lowerUrl.endsWith(ext); });
+                    if (isImage) {
+                        return '<a href="' + encodeURI(url) + '" download><img src="' + encodeURI(url) + '" class="image-preview" alt="点击下载图片"></a>' + suffix;
+                    }
                     return '<a href="' + encodeURI(url) + '" class="download-link" download>' + (label || url) + '</a>' + suffix;
                 };
                 escaped = escaped.replace(/\[([^\]\r\n]+)]\((\/files\/download\/[^\s<>"')]+)\)/g, function (_, label, url) {
