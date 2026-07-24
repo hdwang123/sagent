@@ -37,7 +37,11 @@ public class FileController {
     @GetMapping("/download/{*filename}")
     public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
         try {
-            Path filePath = OUTPUT_PATH.resolve(filename).normalize();
+            String cleanFilename = filename;
+            if (cleanFilename.startsWith("/") || cleanFilename.startsWith("\\")) {
+                cleanFilename = cleanFilename.substring(1);
+            }
+            Path filePath = OUTPUT_PATH.resolve(cleanFilename).normalize();
             if (!filePath.startsWith(OUTPUT_PATH)) {
                 return ResponseEntity.badRequest().build();
             }

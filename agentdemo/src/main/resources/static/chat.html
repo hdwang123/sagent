@@ -614,7 +614,7 @@
             formatContent: function (content) {
                 if (!content) return "";
                 var escaped = String(content).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                var urlPattern = /(\/files\/download\/[^\s<>"']+)/g;
+                var urlPattern = /(\/files\/download\/[^<>\s]+)/g;
                 var createDownloadLink = function (rawUrl, label) {
                     var punctuation = rawUrl.match(/[，。！？、；：）)\]}]+$/);
                     var url = punctuation ? rawUrl.slice(0, -punctuation[0].length) : rawUrl;
