@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -22,7 +24,7 @@ public class CompressionTool {
     /**
      * 输出目录
      */
-    private static final String OUTPUT_DIR = "output";
+    private static final String OUTPUT_DIR = System.getProperty("java.io.tmpdir") + "/sagent-downloads";
 
     /**
      * 下载基础URL
@@ -61,12 +63,22 @@ public class CompressionTool {
                         return "错误: 文件不存在 - " + fileName;
                     }
                     if (Files.isDirectory(filePath)) {
-                        continue;
+                        try (Stream<Path> walkStream = Files.walk(filePath)) {
+                            List<Path> fileList = walkStream.filter(Files::isRegularFile).toList();
+                            for (Path f : fileList) {
+                                String entryName = outputPath.relativize(f).toString().replace("\\", "/");
+                                ZipEntry entry = new ZipEntry(entryName);
+                                zos.putNextEntry(entry);
+                                Files.copy(f, zos);
+                                zos.closeEntry();
+                            }
+                        }
+                    } else {
+                        ZipEntry entry = new ZipEntry(fileName);
+                        zos.putNextEntry(entry);
+                        Files.copy(filePath, zos);
+                        zos.closeEntry();
                     }
-                    ZipEntry entry = new ZipEntry(fileName);
-                    zos.putNextEntry(entry);
-                    Files.copy(filePath, zos);
-                    zos.closeEntry();
                 }
             }
             String downloadUrl = DOWNLOAD_BASE_URL + fullZipFileName;

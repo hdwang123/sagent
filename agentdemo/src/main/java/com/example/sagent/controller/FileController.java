@@ -25,7 +25,7 @@ public class FileController {
     /**
      * 文件存储目录
      */
-    private static final String OUTPUT_DIR = "output";
+    private static final Path OUTPUT_PATH = Paths.get(System.getProperty("java.io.tmpdir"), "sagent-downloads").toAbsolutePath().normalize();
 
     /**
      * 下载文件
@@ -34,11 +34,11 @@ public class FileController {
      * @param filename 文件名
      * @return 文件资源
      */
-    @GetMapping("/download/{filename}")
+    @GetMapping("/download/{*filename}")
     public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
         try {
-            Path filePath = Paths.get(OUTPUT_DIR).resolve(filename).normalize();
-            if (!filePath.startsWith(Paths.get(OUTPUT_DIR))) {
+            Path filePath = OUTPUT_PATH.resolve(filename).normalize();
+            if (!filePath.startsWith(OUTPUT_PATH)) {
                 return ResponseEntity.badRequest().build();
             }
 
@@ -72,14 +72,14 @@ public class FileController {
     @GetMapping("/list")
     public ResponseEntity<List<String>> listFiles() {
         try {
-            Path outputPath = Paths.get(OUTPUT_DIR);
-            if (!Files.exists(outputPath)) {
+            if (!Files.exists(OUTPUT_PATH)) {
                 return ResponseEntity.ok(List.of());
             }
 
-            List<String> files = Files.list(outputPath)
+            List<String> files = Files.walk(OUTPUT_PATH)
                     .filter(Files::isRegularFile)
-                    .map(path -> path.getFileName().toString())
+                    .map(OUTPUT_PATH::relativize)
+                    .map(Path::toString)
                     .toList();
 
             return ResponseEntity.ok(files);

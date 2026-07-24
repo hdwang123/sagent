@@ -14,29 +14,20 @@ public class MessageClassifier {
 
             === 各分类对应的工具功能 ===
 
-            【DATABASE】产品数据库查询工具
-            - listProducts(): 查询全部产品
-            - findProductsByName(): 按名称模糊查询产品
-            - findProductsByMaxPrice(): 按最高价格查询产品
-            - findProductById(): 按ID精确查询产品
-            - countProducts(): 统计产品总数
-            场景：产品查询、价格、库存、数量、分类、统计等业务数据查询，仅返回数据不生成文件
-
-            【SKILL】组合技能工具
-            - ProductReportSkill: 生成产品报告（查询数据库→生成Markdown文档→可选压缩）
-            - WebPageDownloadSkill: 下载并处理网页（下载URL→转换格式→生成文档→可选压缩）
+            【SKILL】组合技能工具（单次调用）
+            - WebPageDownloadSkill: 下载网页中所有图片/视频/音频/文档/HTML内容、网页截图（解析HTML提取img/video/audio/a标签→下载到文件夹→可选压缩）
             - DocumentTool: 生成Markdown文档、生成文本文件、列出输出目录文件
             - CompressionTool: 压缩多个文件为ZIP包
-            - WebPageTool: 下载网页、读取网页内容、列出已下载文件
-            场景：生成报告、下载网页、压缩文件、保存文件、文档操作等需要多步骤的任务
+            场景：下载网页图片、下载网页视频、下载网页音频、下载网页文档、下载网页内容、保存网页HTML、网页截图、压缩文件、保存文件、文档操作等需要调用工具的任务，仅调用一个工具
+
+            【GSKILL】通用技能工具（循环调用）
+            - DataBaseSkill: listProducts()查询全部产品、findProductsByName()按名称模糊查询、findProductsByMaxPrice()按最高价格查询、findProductById()按ID精确查询、countProducts()统计产品总数
+            - AlarmSkill: getCurrentDateTime()获取当前时间、setAlarm()设置闹钟
+            场景：产品查询、价格、库存、数量、统计等业务数据查询，查询时间、设置闹钟等，支持工具组合调用
 
             【RAG】知识库检索工具
             - VectorKnowledgeRetriever: 基于向量相似度检索内部知识库文档
             场景：查询Sagent介绍、项目说明、路由规则、使用手册、知识库文档等内部资料
-
-            【GSKILL】通用技能工具
-            - AlarmSkill: getCurrentDateTime()获取当前时间、setAlarm()设置闹钟
-            场景：查询时间、设置闹钟、设置提醒等通用工具调用
 
             【MCP】外部服务工具（通过MCP协议调用）
             - calculator(num1, num2, operation): 计算器（支持加减乘除）
@@ -50,15 +41,14 @@ public class MessageClassifier {
             场景：闲聊、写作、翻译、通用知识问答等不需要调用工具的情况
 
             === 分类判断规则 ===
-            1. 严格按照优先级判断：DATABASE > SKILL > RAG > GSKILL > MCP > CHAT
-            2. 如果消息明确涉及产品数据查询，优先归类DATABASE
-            3. 如果消息需要生成文件或多步骤处理，归类SKILL
+            1. 严格按照优先级判断：SKILL > GSKILL > RAG > MCP > CHAT
+            2. 如果消息需要生成文件/多步骤处理，归类SKILL
+            3. 如果消息涉及产品数据查询或需要工具组合调用，归类GSKILL
             4. 如果消息查询内部文档/项目说明，归类RAG
-            5. 如果消息需要设置闹钟或查询时间，归类GSKILL
-            6. 如果消息需要计算、查天气、查股票等外部服务，归类MCP
-            7. 其他情况归类CHAT
+            5. 如果消息需要计算、查天气、查股票等外部服务，归类MCP
+            6. 其他情况归类CHAT
 
-            必须在type字段返回CHAT/RAG/DATABASE/SKILL/GSKILL/MCP之一，reason字段简要说明分类理由。
+            必须在type字段返回CHAT/RAG/SKILL/GSKILL/MCP之一，reason字段简要说明分类理由。
             """.trim();
 
     private final ChatClient chatClient;
