@@ -14,7 +14,10 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 向量知识库检索器
@@ -36,6 +39,7 @@ public class VectorKnowledgeRetriever {
     private static final double SIMILARITY_THRESHOLD = 0.1;
 
     private final VectorStore vectorStore;
+    private final List<Document> documents;
 
     /**
      * 构造函数
@@ -44,13 +48,13 @@ public class VectorKnowledgeRetriever {
      * @param embeddingModel Embedding模型
      */
     public VectorKnowledgeRetriever(EmbeddingModel embeddingModel) {
-        List<Document> documents = loadDocuments();
+        this.documents = loadDocuments();
         this.vectorStore = SimpleVectorStore.builder(embeddingModel).build();
-        this.vectorStore.add(documents);
+        this.vectorStore.add(this.documents);
         LOGGER.info(
                 "RAG 向量库初始化完成：embeddingModel={}, documents={}",
                 embeddingModel.getClass().getSimpleName(),
-                documents.size()
+                this.documents.size()
         );
     }
 
@@ -62,9 +66,13 @@ public class VectorKnowledgeRetriever {
      * @return 检索结果列表
      */
     public List<KnowledgeHit> search(String query) {
+        return search(query, MAX_RESULTS);
+    }
+
+    public List<KnowledgeHit> search(String query, int topK) {
         SearchRequest request = SearchRequest.builder()
                 .query(query)
-                .topK(MAX_RESULTS)
+                .topK(topK)
                 .similarityThreshold(SIMILARITY_THRESHOLD)
                 .build();
 
@@ -82,6 +90,84 @@ public class VectorKnowledgeRetriever {
                         .toList()
         );
         return hits;
+    }
+
+    /**
+     * 关键词检索（内存模糊匹配）
+     * 将查询分词后，按文档包含的匹配词数计分排序
+     *
+     * @param query 查询语句
+     * @param topK  返回结果数
+     * @return 检索结果列表
+     */
+    public List<KnowledgeHit> keywordSearch(String query, int topK) {
+        String[] queryWords = query.toLowerCase().split("\\s+");
+        List<KnowledgeHit> hits = new ArrayList<>();
+
+        for (Document doc : this.documents) {
+            String text = doc.getText().toLowerCase();
+            String source = doc.getMetadata().get("source").toString();
+            int matchCount = 0;
+            for (String word : queryWords) {
+                if (text.contains(word)) {
+                    matchCount++;
+                }
+            }
+            if (matchCount > 0) {
+                double score = (double) matchCount / queryWords.length;
+                hits.add(new KnowledgeHit(source, doc.getText(), score));
+            }
+        }
+
+        hits.sort(Comparator.comparingDouble(KnowledgeHit::score).reversed());
+        LOGGER.info("关键词检索完成：hits={}", hits.stream().map(h -> "%s(%.4f)".formatted(h.source(), h.score())).toList());
+        return hits.stream().limit(topK).toList();
+    }
+
+    /**
+     * 混合检索（向量 + 关键词，RRF融合）
+     * 将两种检索结果按 Reciprocal Rank Fusion 合并去重排序
+     *
+     * @param query 查询语句
+     * @param topK  返回结果数
+     * @return 合并后的检索结果列表
+     */
+    public List<KnowledgeHit> hybridSearch(String query, int topK) {
+        // 向量检索
+        List<KnowledgeHit> vectorHits = search(query, topK * 3);
+        // 关键词检索
+        List<KnowledgeHit> keywordHits = keywordSearch(query, topK * 3);
+
+        // RRF融合：每个来源取两侧得分的平均值
+        Map<String, Double> combinedScores = new LinkedHashMap<>();
+        for (int i = 0; i < vectorHits.size(); i++) {
+            KnowledgeHit hit = vectorHits.get(i);
+            double rrf = 1.0 / (60 + i + 1);
+            combinedScores.merge(hit.source(), rrf, Double::sum);
+        }
+        for (int i = 0; i < keywordHits.size(); i++) {
+            KnowledgeHit hit = keywordHits.get(i);
+            double rrf = 1.0 / (60 + i + 1);
+            combinedScores.merge(hit.source(), rrf, Double::sum);
+        }
+
+        // 构建去重后的结果列表（来源 -> 内容映射）
+        Map<String, String> sourceToContent = new LinkedHashMap<>();
+        for (KnowledgeHit hit : vectorHits) {
+            sourceToContent.putIfAbsent(hit.source(), hit.content());
+        }
+        for (KnowledgeHit hit : keywordHits) {
+            sourceToContent.putIfAbsent(hit.source(), hit.content());
+        }
+
+        List<KnowledgeHit> merged = combinedScores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .limit(topK)
+                .map(e -> new KnowledgeHit(e.getKey(), sourceToContent.getOrDefault(e.getKey(), ""), e.getValue()))
+                .toList();
+
+        LOGGER.info("混合检索完成：merged={}", merged.stream().map(h -> "%s(%.4f)".formatted(h.source(), h.score())).toList());
+        return merged;
     }
 
     /**
