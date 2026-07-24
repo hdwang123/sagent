@@ -2,15 +2,81 @@
 
 ## 一、项目背景
 
-[Sagent](https://github.com/hdwang123/sagent) 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了完整的消息路由、知识库检索和工具调用能力。本文将深入剖析其核心机制，帮助你理解如何从零构建一个生产级智能 Agent。
+在大语言模型（LLM）飞速发展的今天，智能 Agent 已成为 AI 应用的重要形态。一个完整的智能 Agent 需要具备三大核心能力：
+
+1. **决策能力**：理解用户意图并选择正确的处理路径
+2. **知识能力**：拥有领域知识，回答专业问题
+3. **执行能力**：调用工具完成实际任务
+
+[Sagent](https://github.com/hdwang123/sagent) 正是基于这三大能力构建的智能 Agent 示例项目。它基于 Spring AI 2.0 框架，实现了完整的消息路由、知识库检索和工具调用能力，是学习和理解智能 Agent 架构的优秀参考。
+
+### 1.1 为什么选择 Spring AI 2.0
+
+Spring AI 2.0 是 Spring 官方推出的 AI 应用开发框架，相比其他框架具有以下优势：
+
+- **与 Spring 生态无缝集成**：天然支持 Spring Boot、Spring Cloud 等生态
+- **标准化的工具调用机制**：内置 `ToolCallingAdvisor` 实现自动工具调用循环
+- **灵活的记忆管理**：支持多种会话记忆策略
+- **多模型支持**：一键切换不同的 LLM 提供商
+
+### 1.2 项目目标
+
+Sagent 项目旨在展示如何构建一个生产级智能 Agent，具体目标包括：
+
+- 实现完整的消息分类和路由机制
+- 演示 RAG 知识库检索的最佳实践
+- 展示工具调用循环的实现方式
+- 提供可复用的技能和工具抽象
+- 构建友好的前端交互界面
 
 ---
 
-## 二、消息分类：Agent 的大脑决策
+## 二、技术栈介绍
+
+Sagent 采用了现代化的技术栈，确保项目的稳定性和可扩展性。
+
+### 2.1 核心技术
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| **JDK** | 21 | 项目运行环境，支持虚拟线程等新特性 |
+| **Spring Boot** | 4.1.0 | 应用框架，提供便捷的依赖管理和自动配置 |
+| **Spring AI** | 2.0.0 | AI 应用开发框架，核心依赖 |
+| **OpenRouter** | - | LLM 接入平台，提供多模型支持 |
+
+### 2.2 机器学习组件
+
+| 技术 | 用途 |
+|------|------|
+| **Transformers** | 本地运行 ONNX Embedding 模型 |
+| **SimpleVectorStore** | 内存向量库，存储和检索文档向量 |
+| **all-MiniLM-L6-v2** | 轻量级 Embedding 模型（ONNX 格式） |
+
+### 2.3 数据存储
+
+| 技术 | 用途 |
+|------|------|
+| **H2** | 内存数据库，存储产品数据供查询测试 |
+| **System Temporary Directory** | 文件存储，保存下载的网页、图片和压缩包 |
+
+### 2.4 前端技术
+
+| 技术 | 用途 |
+|------|------|
+| **Vue 2** | 前端框架，构建聊天界面 |
+| **Element UI** | UI 组件库，提供美观的界面组件 |
+
+### 2.5 MCP 协议
+
+MCP（Model Context Protocol）是一种标准化的工具调用协议，用于连接 LLM 和外部工具。Sagent 通过 MCP 协议调用外部服务，实现计算器、天气查询、股票查询等功能。
+
+---
+
+## 三、消息分类：Agent 的大脑决策
 
 消息分类是 Agent 的入口决策层，决定用户请求应该走哪条处理路径。
 
-### 2.1 分类体系设计
+### 3.1 分类体系设计
 
 我们设计了五种消息类型，按优先级从高到低排列：
 
@@ -24,7 +90,7 @@
 
 这种优先级设计确保了精确匹配的任务不会被通用逻辑"吞没"。
 
-### 2.2 分类器实现
+### 3.2 分类器实现
 
 核心逻辑在 `MessageClassifier.java`：
 
@@ -60,7 +126,7 @@ public RouteDecision classify(String message) {
 }
 ```
 
-### 2.3 关键设计要点
+### 3.3 关键设计要点
 
 **分类器不使用会话记忆**：分类器使用独立的 `ChatClient`，不注入 `MessageChatMemoryAdvisor`，避免把分类决策写入正式聊天记录。
 
@@ -76,17 +142,17 @@ public MessageClassifier(ChatModel chatModel) {
 
 ---
 
-## 三、RAG 原理：让 LLM 拥有领域知识
+## 四、RAG 原理：让 LLM 拥有领域知识
 
 RAG（Retrieval-Augmented Generation）是让大模型回答特定领域问题的核心技术。
 
-### 3.1 RAG 完整流程
+### 4.1 RAG 完整流程
 
 ```
 用户提问 → 文本向量化 → 向量检索 → LLM 重排序 → 生成回答
 ```
 
-### 3.2 文本向量化
+### 4.2 文本向量化
 
 使用本地 ONNX 模型进行 Embedding：
 
@@ -104,7 +170,7 @@ public String generateAnswer(String query, List<Document> documents) {
 }
 ```
 
-### 3.3 混合检索策略
+### 4.3 混合检索策略
 
 我们实现了**关键词检索 + 向量检索**的混合策略：
 
@@ -126,7 +192,7 @@ public List<Document> hybridSearch(String query) {
 }
 ```
 
-### 3.4 LLM 重排序
+### 4.4 LLM 重排序
 
 检索结果可能包含噪声，我们使用 LLM 进行智能重排序：
 
@@ -150,7 +216,7 @@ private List<Document> llmRerank(String query, List<Document> documents) {
 
 **关键坑点**：`rerankClient` 必须独立创建，不能复用带 `MessageChatMemoryAdvisor` 的 `chatClient`，否则会报 `conversationId cannot be null` 错误。
 
-### 3.5 最终回答生成
+### 4.5 最终回答生成
 
 将检索到的上下文注入 LLM 提示词：
 
@@ -178,11 +244,11 @@ private String generateAnswer(String query, List<Document> documents) {
 
 ---
 
-## 四、工具调用循环：让 Agent 具备执行能力
+## 五、工具调用循环：让 Agent 具备执行能力
 
 工具调用是 Agent 从"聊天机器人"进化为"智能助手"的关键。
 
-### 4.1 Spring AI 2.0 的工具调用机制
+### 5.1 Spring AI 2.0 的工具调用机制
 
 Spring AI 2.0 将工具调用循环从 `ChatModel` 内部抽取为 `ToolCallingAdvisor` 递归顾问：
 
@@ -190,7 +256,7 @@ Spring AI 2.0 将工具调用循环从 `ChatModel` 内部抽取为 `ToolCallingA
 注入工具定义 → 调用 LLM → LLM 返回工具调用请求 → 执行工具 → 回填结果 → 再次调用 LLM → 循环
 ```
 
-### 4.2 工具注册方式
+### 5.2 工具注册方式
 
 通过 `@Tool` 注解定义工具，然后通过 `.tools()` 注册到 `ChatClient`：
 
@@ -215,7 +281,7 @@ public class DataBaseSkill implements GSkill {
 }
 ```
 
-### 4.3 工具调用配置
+### 5.3 工具调用配置
 
 ```java
 // SkillHandler.java
@@ -236,7 +302,7 @@ public HandlerResult handle(String message, String conversationId) {
 }
 ```
 
-### 4.4 SKILL vs GSKILL 的区别
+### 5.4 SKILL vs GSKILL 的区别
 
 | 特性 | SKILL（企业固定技能） | GSKILL（通用技能） |
 |------|---------------------|-------------------|
@@ -245,7 +311,7 @@ public HandlerResult handle(String message, String conversationId) {
 | 适用场景 | 明确的单一步骤任务 | 需要多步骤协作的复杂任务 |
 | 示例 | 截图、下载网页 | 数据库查询、多步计算 |
 
-### 4.5 循环停止条件
+### 5.5 循环停止条件
 
 `ToolCallingAdvisor` 的循环在以下情况停止：
 
@@ -255,7 +321,7 @@ public HandlerResult handle(String message, String conversationId) {
 
 ---
 
-## 五、完整架构
+## 六、完整架构
 
 ```mermaid
 flowchart TD
@@ -296,27 +362,27 @@ flowchart TD
 
 ---
 
-## 六、关键技术总结
+## 七、关键技术总结
 
-### 6.1 内存隔离
+### 7.1 内存隔离
 
 - **分类器内存**：独立的 `ChatClient`，不使用记忆
 - **处理器内存**：共享 `MessageChatMemoryAdvisor`，支持多轮对话
 - **重排序内存**：独立的 `rerankClient`，避免会话 ID 干扰
 
-### 6.2 安全约束
+### 7.2 安全约束
 
 - 文件操作限制在系统临时目录
 - 工具调用限制单次调用（SKILL）或受控循环（GSKILL）
 - 路径遍历攻击防护
 
-### 6.3 延迟初始化
+### 7.3 延迟初始化
 
 MCP 客户端采用延迟初始化，首次请求时才建立连接，避免启动依赖。
 
 ---
 
-## 七、快速上手
+## 八、快速上手
 
 ```bash
 # 克隆项目
@@ -335,7 +401,7 @@ http://localhost:8080/chat.html
 
 ---
 
-## 八、结语
+## 九、结语
 
 智能 Agent 的核心在于**决策（消息分类）、知识（RAG）和执行（工具调用）**三者的有机结合。Sagent 项目展示了如何基于 Spring AI 2.0 构建一个架构清晰、功能完整的智能 Agent 系统。
 
