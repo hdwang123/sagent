@@ -47,11 +47,13 @@ flowchart TD
     C --> R["大模型消息分类"]
     R --> D{"RouteDecision"}
     D -->|"CHAT"| CH["普通聊天"]
+    D -->|"ASKILL"| AS["审批技能（敏感操作需人工审批）"]
     D -->|"RAG"| RA["本地向量检索 + 大模型回答"]
     D -->|"SKILL"| SK["技能执行（单次工具调用）"]
     D -->|"GSKILL"| GS["通用技能执行（多轮工具调用）"]
     D -->|"MCP"| MC["MCP 外部服务 Tool Calling"]
     CH --> M["MessageChatMemoryAdvisor"]
+    AS --> M
     RA --> M
     SK --> M
     GS --> M
