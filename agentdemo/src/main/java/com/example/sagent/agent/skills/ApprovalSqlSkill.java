@@ -34,17 +34,14 @@ public class ApprovalSqlSkill implements ASkill {
 
     // ===== 查询方法（不加 @Approval，直接放行） =====
 
-    @Tool(description = "查询当前会话中所有审批记录的详细状态")
+    @Tool(description = "查询所有审批记录的详细状态")
     public String getMyApprovals() {
-        String conversationId = ApprovalContext.getUserId();
-        if (conversationId == null) return "当前会话无审批记录";
         List<ApprovalRecord> records = jdbcClient.sql(
-                "select %s from approval_records where user_id = :uid order by create_time desc"
+                "select %s from approval_records order by create_time desc"
                         .formatted(COLS))
-                .param("uid", conversationId)
                 .query(this::mapRecord)
                 .list();
-        if (records.isEmpty()) return "当前会话无审批记录";
+        if (records.isEmpty()) return "当前无审批记录";
         StringBuilder sb = new StringBuilder();
         for (ApprovalRecord r : records) {
             String s = switch (r.status()) {
