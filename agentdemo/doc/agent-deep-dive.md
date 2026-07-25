@@ -1,8 +1,8 @@
-# 从零构建智能 Agent：消息分类、RAG 检索与工具调用循环深度解析
+# Java + Spring AI 实战：从零构建智能 Agent 系统
 
 ## 一、项目背景
 
-在大语言模型（LLM）飞速发展的今天，智能 Agent 已成为 AI 应用的重要形态。一个完整的智能 Agent 需要具备三大核心能力：
+在大语言模型（LLM）飞速发展的今天，智能 Agent 已成为 AI 应用的重要形态。一个完整的智能 Agent 需要具备四大核心能力：
 
 1. **决策能力**：理解用户意图并选择正确的处理路径
 2. **知识能力**：拥有领域知识，回答专业问题
@@ -44,7 +44,7 @@ Sagent 采用了现代化的技术栈，确保项目的稳定性和可扩展性�
 | **JDK** | 21 | 项目运行环境，支持虚拟线程等新特性 |
 | **Spring Boot** | 4.1.0 | 应用框架，提供便捷的依赖管理和自动配置 |
 | **Spring AI** | 2.0.0 | AI 应用开发框架，核心依赖 |
-| **OpenRouter** | - | LLM 接入平台，提供多模型支持 |
+| **DeepSeek** | - | LLM 接入平台，提供多模型支持 |
 
 ### 2.2 机器学习组件
 
@@ -522,7 +522,7 @@ MCP 客户端采用延迟初始化，首次请求时才建立连接，避免启�
 git clone https://github.com/hdwang123/sagent.git
 
 # 设置环境变量
-export OPENROUTER_API_KEY="你的Key"
+export DEEPSEEK_API_KEY="你的Key"
 
 # 启动项目
 cd agentdemo

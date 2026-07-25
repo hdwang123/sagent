@@ -2,12 +2,12 @@
 
 Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
 
-用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 DeepSeek 调用，Embedding 模型在本地 JVM 中运行。
 
 ## 功能特性
 
 - **智能消息分类**：支持 `CHAT`、`ASKILL`、`RAG`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
-- **普通聊天**：基于 OpenRouter 的多轮对话能力
+- **普通聊天**：基于 DeepSeek 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
@@ -33,7 +33,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 | JDK | 21 |
 | Spring Boot | 4.1.0 |
 | Spring AI | 2.0.0 |
-| OpenRouter | OpenAI 兼容聊天接口 |
+| DeepSeek | OpenAI 兼容聊天接口 |
 | Transformers | 本地运行 ONNX Embedding |
 | SimpleVectorStore | 内存向量库 |
 | H2 | 内存数据库 |
@@ -115,9 +115,10 @@ src/main/java/com/example/sagent
 │  └─ routing       消息路由
 │     └─ MessageClassifier  消息分类器
 └─ controller       HTTP 接口
-   ├─ ChatController   聊天接口
-   ├─ ApprovalController  审批接口
-   └─ FileController   文件管理接口
+   ├─ ChatController       聊天接口
+   ├─ ApprovalController   审批接口
+   ├─ DataController       数据查询接口（产品、审批列表）
+   └─ FileController       文件管理接口
 
 src/main/resources
 ├─ embedding        内嵌 ONNX Embedding 模型
@@ -134,22 +135,16 @@ src/main/resources
 
 - JDK 21
 - Maven 3.9+
-- OpenRouter API Key
+- DeepSeek API Key
 
 不需要安装 Ollama、Python、Node.js、MySQL 或 Redis。
 
-### 配置 OpenRouter
+### 配置 DeepSeek
 
 必须设置环境变量：
 
 ```text
-OPENROUTER_API_KEY
-```
-
-可选指定模型：
-
-```text
-OPENROUTER_MODEL
+DEEPSEEK_API_KEY
 ```
 
 **安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
@@ -179,8 +174,7 @@ MCP Server 地址通过 `mcp.server.url` 配置（默认 `http://localhost:8081/
 **Windows PowerShell**：
 
 ```powershell
-$env:OPENROUTER_API_KEY = "你的真实Key"
-$env:OPENROUTER_MODEL = "openrouter/free"
+$env:DEEPSEEK_API_KEY = "你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -188,8 +182,7 @@ mvn spring-boot:run
 **macOS / Linux**：
 
 ```bash
-export OPENROUTER_API_KEY="你的真实Key"
-export OPENROUTER_MODEL="openrouter/free"
+export DEEPSEEK_API_KEY="你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -214,6 +207,7 @@ http://localhost:8080/chat.html
 - 清空页面和服务端会话记忆
 - 下载链接渲染（SKILL 生成的文件，图片显示缩略图）
 - 审批面板（查看待审批项，支持批准/拒绝）
+- 产品查询面板（查看当前数据库产品，用于核对审批操作结果）
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
 
@@ -229,7 +223,7 @@ Content-Type: application/json
 请求体：
 
 ```json
-"OPENROUTER_API_KEY 在哪里配置？"
+"DEEPSEEK_API_KEY 在哪里配置？"
 ```
 
 响应：
@@ -237,7 +231,7 @@ Content-Type: application/json
 ```json
 {
   "conversationId": "demo-1",
-  "answer": "项目从 OPENROUTER_API_KEY 环境变量读取 API Key。",
+  "answer": "项目从 DEEPSEEK_API_KEY 环境变量读取 API Key。",
   "type": "RAG",
   "routeReason": "用户询问项目配置",
   "sources": [
@@ -259,7 +253,13 @@ Content-Type: application/json
 GET /ai/approvals/pending
 ```
 
-查询当前会话的待审批记录。
+查询待审批记录。
+
+```http
+GET /ai/approvals/all
+```
+
+查询全部审批记录（含已通过、已拒绝）。
 
 ```http
 POST /ai/approvals/{id}/approve
@@ -272,6 +272,20 @@ POST /ai/approvals/{id}/reject
 ```
 
 拒绝指定审批记录。
+
+### 数据查询接口
+
+```http
+GET /api/products
+```
+
+查询全部产品，用于核对审批操作结果。
+
+```http
+GET /api/approvals
+```
+
+查询全部审批记录（独立路径，无 AI 会话依赖）。
 
 ### 文件下载
 
@@ -308,7 +322,7 @@ GET /files/list
 ### RAG 知识库查询
 
 ```text
-OPENROUTER_API_KEY 在哪里配置？
+DEEPSEEK_API_KEY 在哪里配置？
 Why was 1998 SH2 reclassified as a comet?
 What does WHO recommend to reduce dementia risk?
 ```
@@ -368,9 +382,8 @@ mvn test
 ```
 
 测试覆盖：
-- 消息分类器测试（`MessageClassifierTests`）
-- 产品数据库工具测试（`ProductDatabaseToolsTests`）
-- 向量知识库检索器测试（`VectorKnowledgeRetrieverTests`）
+- 消息分类器测试
+- 向量知识库检索器测试
 
 ## 注意事项
 
