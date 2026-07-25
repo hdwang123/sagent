@@ -12,14 +12,14 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
 - **GSKILL 通用技能**：由大模型决定调用工具计划，支持多轮工具调用循环
-- **ASKILL 审批技能**：敏感操作需人工审批，`@Approval(enable=true)` 标记的方法被 LLM 调用时自动创建审批记录
+  - `DataBaseSkill`：H2 内存数据库查询
+  - `AlarmSkill`：获取时间、设置闹钟
+- **ASKILL 审批技能**：敏感操作需人工审批，审批通过后自动执行
+  - `ApprovalSqlSkill`：产品删除、修改价格、修改库存（需审批）
+  - 审批机制：`@Approval(enable=true)` 标记的方法被 LLM 调用时自动创建 PENDING 记录
   - 审批面板：前端 Element UI 表格展示待审批项，支持批准/拒绝
   - 自动执行：批准后通过 `ToolRegistry` 重新唤起原始工具方法执行业务逻辑
   - 用户查询：内置 `getMyApprovals()`、`checkApprovalById()` 查询审批状态
-  - 去重策略：每次 LLM 调用都强制创建新的 PENDING 记录
-  - 调用隔离：`ApprovalBypass` ThreadLocal 标志区分 LLM 调用和面板直接执行
-  - `DataBaseSkill`：H2 内存数据库查询
-  - `AlarmSkill`：获取时间、设置闹钟
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
 - **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
@@ -67,6 +67,7 @@ flowchart TD
 - 六个最终处理分支共享同一份会话记忆
 - SKILL 单次调用单一工具，不进入工具调用循环
 - GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
+- ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
 
 ## 项目结构
 
@@ -93,6 +94,7 @@ src/main/java/com/example/sagent
 │  ├─ skills        技能实现
 │  │  ├─ ASkill            ASKILL 接口
 │  │  ├─ ApprovalSqlSkill    审批 SQL 技能（ASKILL）
+│  │  ├─ ApprovalContext     审批上下文（ThreadLocal）
 │  │  ├─ Skill             SKILL 接口
 │  │  ├─ GSkill            GSKILL 接口
 │  │  ├─ DataBaseSkill     数据库查询技能（GSKILL）
@@ -114,6 +116,7 @@ src/main/java/com/example/sagent
 │     └─ MessageClassifier  消息分类器
 └─ controller       HTTP 接口
    ├─ ChatController   聊天接口
+   ├─ ApprovalController  审批接口
    └─ FileController   文件管理接口
 
 src/main/resources
@@ -210,6 +213,7 @@ http://localhost:8080/chat.html
 - 停止请求
 - 清空页面和服务端会话记忆
 - 下载链接渲染（SKILL 生成的文件，图片显示缩略图）
+- 审批面板（查看待审批项，支持批准/拒绝）
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
 
@@ -248,6 +252,26 @@ Content-Type: application/json
 - `message`：用户消息内容
 
 **注意**：当前接口一次性返回完整 JSON，不是 SSE 流式响应。
+
+### 审批接口
+
+```http
+GET /ai/approvals/pending
+```
+
+查询当前会话的待审批记录。
+
+```http
+POST /ai/approvals/{id}/approve
+```
+
+批准指定审批记录，系统会自动执行原始操作。
+
+```http
+POST /ai/approvals/{id}/reject
+```
+
+拒绝指定审批记录。
 
 ### 文件下载
 
@@ -314,12 +338,12 @@ What does WHO recommend to reduce dementia risk?
 
 ### ASKILL 审批技能
 
-`	ext
+```text
 删除产品 3
 修改产品 1 的价格为 199
 查询我的审批状态
 查看编号 xxx 的审批
-`
+```
 
 ### MCP 外部服务
 
@@ -356,6 +380,7 @@ mvn test
 - 数据库查询走 GSKILL/DataBaseSkill，删除和修改操作需通过 ASKILL/ApprovalSqlSkill 审批后方可执行
 - SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
+- ASKILL 审批机制：带 `@Approval(enable=true)` 注解的方法通过 AOP 切面拦截，自动创建 PENDING 记录并返回等待人工审批；查询类方法（`getMyApprovals`、`checkApprovalById`）无需审批直接放行
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
 ## 附录：工具调用循环
