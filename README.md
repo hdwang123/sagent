@@ -61,8 +61,8 @@ flowchart TD
 ```
 
 **设计要点**：
-- 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录
-- 五个最终处理分支共享同一份会话记忆
+- 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录。分类优先级：`SKILL > GSKILL > ASKILL > RAG > MCP > CHAT`
+- 六个最终处理分支共享同一份会话记忆
 - SKILL 单次调用单一工具，不进入工具调用循环
 - GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 
