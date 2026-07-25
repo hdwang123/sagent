@@ -2,7 +2,7 @@
 
 Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
 
-用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 OpenRouter 调用，Embedding 模型在本地 JVM 中运行。
 
 ## 功能特性
 
@@ -340,7 +340,7 @@ mvn test
 - 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空
 - 每个会话最多保留 20 条消息
 - RAG 知识文件位于 `src/main/resources/knowledge`
-- 数据库 Tool 只提供查询方法，没有新增、修改或删除操作；删除和修改操作需通过 ASKILL 审批技能
+- 数据库查询走 GSKILL/DataBaseSkill，删除和修改操作需通过 ASKILL/ApprovalSqlSkill 审批后方可执行
 - SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
