@@ -507,6 +507,11 @@
                     <i class="el-icon-delete"></i>
                 </button>
             </el-tooltip>
+            <el-tooltip content="审批管理" placement="bottom">
+                <button class="icon-button" type="button" aria-label="审批管理" @click="openApprovalPanel">
+                    <i class="el-icon-s-check"></i>
+                </button>
+            </el-tooltip>
         </div>
     </header>
 
@@ -571,7 +576,44 @@
             </footer>
         </section>
     </main>
-</div>
+    <!-- 审批管理面板 -->
+    <el-dialog title="审批管理" :visible.sync="approvalDialogVisible" width="700px" top="5vh"
+               :close-on-click-modal="false" @open="fetchPendingApprovals">
+        <div v-if="approvalLoading" style="text-align:center;padding:30px 0;">
+            <i class="el-icon-loading"></i> 加载中...
+        </div>
+        <div v-else-if="pendingApprovals.length === 0" style="text-align:center;padding:30px 0;color:#909399;">
+            <i class="el-icon-circle-check" style="font-size:36px;color:#67c23a;"></i>
+            <p style="margin-top:12px;font-size:14px;">当前没有待审批的请求</p>
+        </div>
+        <el-table v-else :data="pendingApprovals" style="width:100%" stripe>
+            <el-table-column label="编号" prop="id" width="60" align="center"></el-table-column>
+            <el-table-column label="会话" prop="conversationId" min-width="120" show-overflow-tooltip></el-table-column>
+            <el-table-column label="操作" min-width="200">
+                <template slot-scope="scope">
+                    <div style="font-weight:600;">{{ toolLabel(scope.row.toolName) }}</div>
+                    <div style="font-size:12px;color:#909399;margin-top:2px;">{{ prettyArgs(scope.row.argsJson, scope.row.toolName) }}</div>
+                </template>
+            </el-table-column>
+            <el-table-column label="提交时间" min-width="140">
+                <template slot-scope="scope">
+                    {{ formatTime(scope.row.createTime) }}
+                </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" align="center">
+                <template slot-scope="scope">
+                    <el-button type="success" size="mini" :loading="btnLoading === scope.row.id"
+                               @click="approveApproval(scope.row)">批准</el-button>
+                    <el-button type="danger" size="mini" :loading="btnRejectLoading === scope.row.id"
+                               @click="rejectApproval(scope.row)">拒绝</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+        <span slot="footer">
+            <el-button @click="approvalDialogVisible = false">关闭</el-button>
+            <el-button type="primary" @click="fetchPendingApprovals">刷新</el-button>
+        </span>
+    </el-dialog></div>
 
 <script src="lib/vue/vue.min.js"></script>
 <script src="lib/element-ui/index.js"></script>
@@ -586,7 +628,12 @@
                 controller: null,
                 conversationId: "",
                 nextId: 1,
-                statusText: "就绪"
+                statusText: "就绪",
+                approvalDialogVisible: false,
+                pendingApprovals: [],
+                approvalLoading: false,
+                btnLoading: null,
+                btnRejectLoading: null
             };
         },
         mounted: function () {
@@ -625,7 +672,8 @@
                     RAG: "RAG 检索",
                     DATABASE: "数据库查询",
                     SKILL: "技能执行",
-                    GSKILL: "通用技能"
+                    GSKILL: "通用技能",
+                    ASKILL: "审批技能"
                 }[type] || type;
             },
             formatContent: function (content) {
@@ -758,6 +806,105 @@
                 this.$nextTick(function () {
                     this.$refs.input.focus();
                 });
+            },
+            openApprovalPanel: function () {
+                this.approvalDialogVisible = true;
+            },
+            fetchPendingApprovals: async function () {
+                this.approvalLoading = true;
+                try {
+                    var response = await fetch("/ai/approvals/pending");
+                    if (response.ok) {
+                        var data = await response.json();
+                        this.pendingApprovals = data || [];
+                    }
+                } catch (error) {
+                    console.warn("获取审批列表失败", error);
+                } finally {
+                    this.approvalLoading = false;
+                }
+            },
+            approveApproval: async function (record) {
+                this.btnLoading = record.id;
+                try {
+                    var response = await fetch("/ai/approvals/" + record.id + "/approve", {
+                        method: "POST"
+                    });
+                    var result = await response.json();
+                    if (result.success) {
+                        await this.fetchPendingApprovals();
+                        this.$message({
+                            type: "success",
+                            message: "审批通过：\n" + result.result,
+                            duration: 5000,
+                            showClose: true
+                        });
+                    } else {
+                        this.$message.error("操作失败：" + (result.error || "未知错误"));
+                    }
+                } catch (error) {
+                    this.$message.error("操作失败：" + error.message);
+                } finally {
+                    this.btnLoading = null;
+                }
+            },
+            rejectApproval: async function (record) {
+                this.btnRejectLoading = record.id;
+                try {
+                    var response = await fetch("/ai/approvals/" + record.id + "/reject", {
+                        method: "POST"
+                    });
+                    var result = await response.json();
+                    if (result.success) {
+                        await this.fetchPendingApprovals();
+                        this.$message({
+                            type: "info",
+                            message: "审批请求 #" + record.id + " 已拒绝",
+                            duration: 3000
+                        });
+                    } else {
+                        this.$message.error("操作失败：" + (result.error || "未知错误"));
+                    }
+                } catch (error) {
+                    this.$message.error("操作失败：" + error.message);
+                } finally {
+                    this.btnRejectLoading = null;
+                }
+            },
+            toolLabel: function (toolName) {
+                return {
+                    deleteProduct: "删除产品",
+                    updateProductPrice: "修改价格",
+                    updateProductStock: "修改库存"
+                }[toolName] || toolName;
+            },
+            prettyArgs: function (argsJson, toolName) {
+                try {
+                    var args = JSON.parse(argsJson);
+                    if (toolName === "deleteProduct") {
+                        return "产品ID: " + args.id;
+                    } else if (toolName === "updateProductPrice") {
+                        return "产品ID: " + args.id + " -> 价格: " + args.newPrice;
+                    } else if (toolName === "updateProductStock") {
+                        return "产品ID: " + args.id + " -> 库存: " + args.newStock;
+                    }
+                    return argsJson;
+                } catch (e) {
+                    return argsJson;
+                }
+            },
+            formatTime: function (ts) {
+                if (!ts) return "";
+                try {
+                    var d = new Date(ts);
+                    return d.toLocaleString("zh-CN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    });
+                } catch (e) {
+                    return ts;
+                }
             }
         }
     });

@@ -37,18 +37,23 @@ public class MessageClassifier {
             - echo(message): 回显消息（测试用）
             场景：数学计算、天气查询、股票查询、系统信息获取、外部API调用等
 
+            【ASKILL】审批技能工具（需要人工审批）
+            - ApprovalSqlSkill: deleteProduct(id)删除产品、updateProductPrice(id,newPrice)修改价格、updateProductStock(id,newStock)修改库存
+            场景：删除产品、修改产品价格、修改产品库存等敏感数据库操作，每次操作先提交审批，人工审核通过后自动执行
+
             【CHAT】普通聊天
             场景：闲聊、写作、翻译、通用知识问答等不需要调用工具的情况
 
             === 分类判断规则 ===
-            1. 严格按照优先级判断：SKILL > GSKILL > RAG > MCP > CHAT
+            1. 严格按照优先级判断：SKILL > GSKILL > ASKILL > RAG > MCP > CHAT
             2. 如果消息需要生成文件/多步骤处理，归类SKILL
-            3. 如果消息涉及产品数据查询或需要工具组合调用，归类GSKILL
-            4. 如果消息查询内部文档/项目说明，归类RAG
-            5. 如果消息需要计算、查天气、查股票等外部服务，归类MCP
-            6. 其他情况归类CHAT
+            3. 如果消息涉及删除、修改产品等敏感数据库操作，归类ASKILL
+            4. 如果消息涉及产品数据查询或需要工具组合调用，归类GSKILL
+            5. 如果消息查询内部文档/项目说明，归类RAG
+            6. 如果消息需要计算、查天气、查股票等外部服务，归类MCP
+            7. 其他情况归类CHAT
 
-            必须在type字段返回CHAT/RAG/SKILL/GSKILL/MCP之一，reason字段简要说明分类理由。
+            必须在type字段返回CHAT/RAG/SKILL/GSKILL/ASKILL/MCP之一，reason字段简要说明分类理由。
             """.trim();
 
     private final ChatClient chatClient;

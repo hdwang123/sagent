@@ -6,12 +6,18 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 
 ## 功能特性
 
-- **智能消息分类**：支持 `CHAT`、`RAG`、`SKILL`、`GSKILL`、`MCP` 五种消息类型
+- **智能消息分类**：支持 `CHAT`、`ASKILL`、`RAG`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
 - **普通聊天**：基于 OpenRouter 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
 - **GSKILL 通用技能**：由大模型决定调用工具计划，支持多轮工具调用循环
+- **ASKILL 审批技能**：敏感操作需人工审批，`@Approval(enable=true)` 标记的方法被 LLM 调用时自动创建审批记录
+  - 审批面板：前端 Element UI 表格展示待审批项，支持批准/拒绝
+  - 自动执行：批准后通过 `ToolRegistry` 重新唤起原始工具方法执行业务逻辑
+  - 用户查询：内置 `getMyApprovals()`、`checkApprovalById()` 查询审批状态
+  - 去重策略：每次 LLM 调用都强制创建新的 PENDING 记录
+  - 调用隔离：`ApprovalBypass` ThreadLocal 标志区分 LLM 调用和面板直接执行
   - `DataBaseSkill`：H2 内存数据库查询
   - `AlarmSkill`：获取时间、设置闹钟
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
@@ -293,6 +299,15 @@ What does WHO recommend to reduce dementia risk?
 帮我设置一个5分钟后的闹钟。
 ```
 
+### ASKILL 审批技能
+
+`	ext
+删除产品 3
+修改产品 1 的价格为 199
+查询我的审批状态
+查看编号 xxx 的审批
+`
+
 ### MCP 外部服务
 
 ```text
@@ -325,7 +340,7 @@ mvn test
 - 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空
 - 每个会话最多保留 20 条消息
 - RAG 知识文件位于 `src/main/resources/knowledge`
-- 数据库 Tool 只提供查询方法，没有新增、修改或删除操作
+- 数据库 Tool 只提供查询方法，没有新增、修改或删除操作；删除和修改操作需通过 ASKILL 审批技能
 - SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
