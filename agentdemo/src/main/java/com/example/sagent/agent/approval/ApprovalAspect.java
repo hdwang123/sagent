@@ -26,8 +26,12 @@ public class ApprovalAspect {
 
     @Around("execution(* com.example.sagent.agent.skills.ASkill+.*(..)) && @annotation(approval)")
     public Object checkApproval(ProceedingJoinPoint pjp, Approval approval) throws Throwable {
+        String methodName = pjp.getSignature().getName();
+        LOGGER.info("ApprovalAspect intercepting {}", methodName);
+
         // 审批面板直接调用 -> 放行
         if (ApprovalBypass.isActive()) {
+            LOGGER.info("ApprovalBypass active, proceeding {}", methodName);
             return pjp.proceed();
         }
 
@@ -35,13 +39,12 @@ public class ApprovalAspect {
             return pjp.proceed();
         }
 
-        String methodName = pjp.getSignature().getName();
         Object[] args = pjp.getArgs();
 
         String userId = ApprovalContext.getUserId();
         if (userId == null) {
-            LOGGER.warn("ApprovalContext.userId is null, allowing execution of {}", methodName);
-            return pjp.proceed();
+            userId = "anonymous";
+            LOGGER.warn("ApprovalContext.userId is null, using fallback 'anonymous' for {}", methodName);
         }
 
         // 按方法参数名生成 JSON，与 ToolController.resolveArgs 解析格式一致
