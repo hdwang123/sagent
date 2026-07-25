@@ -76,13 +76,23 @@ src/main/java/com/example/sagent
 │  ├─ core          Agent 核心调度层
 │  │  ├─ AgentHandler      处理器接口
 │  │  └─ AgentService      Agent 服务（消息路由）
+│  ├─ approval      审批系统
+│  │  ├─ Approval.java               @Approval 注解
+│  │  ├─ ApprovalAspect.java         @Aspect 切面拦截
+│  │  ├─ ApprovalService.java        审批核心服务
+│  │  ├─ ApprovalBypass.java         ThreadLocal 绕过标志
+│  │  ├─ ToolRegistry.java           工具注册表
+│  │  └─ UserIdResolver.java         用户 ID 解析器
 │  ├─ handlers      Agent 处理器实现
 │  │  ├─ ChatHandler       普通聊天处理器
+│  │  ├─ ASkillHandler     ASKILL 审批技能处理器
 │  │  ├─ RagHandler        RAG 检索处理器
 │  │  ├─ SkillHandler      SKILL 企业技能处理器
 │  │  ├─ GSkillHandler     GSKILL 通用技能处理器
 │  │  └─ McpHandler        MCP 外部服务处理器
 │  ├─ skills        技能实现
+│  │  ├─ ASkill            ASKILL 接口
+│  │  ├─ ApprovalSqlSkill    审批 SQL 技能（ASKILL）
 │  │  ├─ Skill             SKILL 接口
 │  │  ├─ GSkill            GSKILL 接口
 │  │  ├─ DataBaseSkill     数据库查询技能（GSKILL）
@@ -98,6 +108,7 @@ src/main/java/com/example/sagent
 │  │  ├─ AgentResponse     响应模型
 │  │  ├─ HandlerResult     处理器结果
 │  │  ├─ RouteDecision     路由决策
+│  │  ├─ ApprovalRecord    审批记录（record 类型）
 │  │  └─ Product           产品实体
 │  └─ routing       消息路由
 │     └─ MessageClassifier  消息分类器
