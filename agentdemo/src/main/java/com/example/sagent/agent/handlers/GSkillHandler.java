@@ -25,6 +25,7 @@ public class GSkillHandler implements AgentHandler {
     private static final String SYSTEM_PROMPT = """
             你是通用技能执行助手，可以调用各种技能完成复杂任务。
             必须调用提供的技能工具完成任务，不能自行编造结果。
+            【重要】每次查询数据库操作都必须重新调用工具获取最新数据，不能使用对话历史中的旧数据。
             如果现有技能无法满足需求，请明确说明当前支持的技能范围。
             使用中文简洁回答，并说明已执行的操作。
             """;
