@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -37,16 +38,16 @@ public class GSkillHandler implements AgentHandler {
      * 构造函数
      *
      * @param chatClientBuilder ChatClient构建器
-     * @param memoryAdvisor     消息聊天记忆顾问
+     * @param toolMemoryAdvisor 工具类小窗口记忆顾问（4条消息，防止LLM复述历史数据）
      * @param skills            通用技能列表
      */
     public GSkillHandler(
             ChatClient.Builder chatClientBuilder,
-            MessageChatMemoryAdvisor memoryAdvisor,
+            @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
             List<GSkill> skills
     ) {
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())
+                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
                 .build();
         this.skills = skills;
     }

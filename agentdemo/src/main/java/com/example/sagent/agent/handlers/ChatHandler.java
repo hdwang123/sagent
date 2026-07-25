@@ -6,6 +6,7 @@ import com.example.sagent.agent.model.HandlerResult;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,7 +26,7 @@ public class ChatHandler implements AgentHandler {
      */
     public ChatHandler(
             ChatClient.Builder chatClientBuilder,
-            MessageChatMemoryAdvisor memoryAdvisor
+            @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor)

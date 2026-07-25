@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -28,11 +29,11 @@ public class SkillHandler implements AgentHandler {
 
     public SkillHandler(
             ChatClient.Builder chatClientBuilder,
-            MessageChatMemoryAdvisor memoryAdvisor,
+            @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
             List<Skill> skills
     ) {
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())
+                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
                 .build();
         this.skills = skills;
     }

@@ -9,6 +9,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -70,7 +71,7 @@ public class RagHandler implements AgentHandler {
      */
     public RagHandler(
             ChatClient.Builder chatClientBuilder,
-            MessageChatMemoryAdvisor memoryAdvisor,
+            @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor,
             VectorKnowledgeRetriever knowledgeRetriever,
             ConversationHistory conversationHistory,
             ChatModel chatModel

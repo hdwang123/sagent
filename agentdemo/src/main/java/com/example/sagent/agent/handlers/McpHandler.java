@@ -10,6 +10,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -36,12 +37,12 @@ public class McpHandler implements AgentHandler {
 
     public McpHandler(
             ChatClient.Builder chatClientBuilder,
-            MessageChatMemoryAdvisor memoryAdvisor,
+            @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
             @Value("${mcp.server.url}")
             String mcpServerUrl
     ) {
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(memoryAdvisor, new SimpleLoggerAdvisor())
+                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
                 .build();
         this.mcpServerUrl = mcpServerUrl;
     }
