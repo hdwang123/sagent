@@ -809,6 +809,9 @@
             },
             openApprovalPanel: function () {
                 this.approvalDialogVisible = true;
+                this.$nextTick(function () {
+                    this.fetchPendingApprovals();
+                });
             },
             fetchPendingApprovals: async function () {
                 this.approvalLoading = true;
@@ -816,10 +819,15 @@
                     var response = await fetch("/ai/approvals/pending");
                     if (response.ok) {
                         var data = await response.json();
-                        this.pendingApprovals = data || [];
+                        console.log("审批列表API返回:", data);
+                        this.pendingApprovals = Array.isArray(data) ? data : [];
+                    } else {
+                        console.error("审批列表API错误:", response.status, response.statusText);
+                        this.$message.error("获取审批列表失败（HTTP " + response.status + "）");
                     }
                 } catch (error) {
-                    console.warn("获取审批列表失败", error);
+                    console.error("获取审批列表失败", error);
+                    this.$message.error("获取审批列表失败：" + error.message);
                 } finally {
                     this.approvalLoading = false;
                 }

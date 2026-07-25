@@ -43,8 +43,10 @@ public class ApprovalService {
     }
 
     public List<ApprovalRecord> listPending() {
-        return jdbcClient.sql("select %s from %s where status = 'PENDING' order by create_time desc".formatted(COLS, TABLE))
+        var records = jdbcClient.sql("select %s from %s where status = 'PENDING' order by create_time desc".formatted(COLS, TABLE))
                 .query(this::mapRecord).list();
+        LOGGER.info("listPending: found {} PENDING records", records.size());
+        return records;
     }
 
     public ApprovalRecord getRecord(String id) {
