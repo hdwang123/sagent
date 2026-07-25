@@ -875,7 +875,7 @@
             fetchProducts: async function () {
                 this.productLoading = true;
                 try {
-                    var response = await fetch("/ai/approvals/products");
+                    var response = await fetch("/api/products");
                     if (response.ok) {
                         var data = await response.json();
                         this.products = Array.isArray(data) ? data : [];
