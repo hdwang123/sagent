@@ -3,6 +3,7 @@ package com.example.sagent.agent.memory;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -20,9 +21,9 @@ public class ConversationHistory {
     /**
      * 构造函数
      *
-     * @param chatMemory 聊天记忆实例
+     * @param chatMemory 聊天记忆实例（大窗口，用于对话场景）
      */
-    public ConversationHistory(ChatMemory chatMemory) {
+    public ConversationHistory(@Qualifier("chatMemory") ChatMemory chatMemory) {
         this.chatMemory = chatMemory;
     }
 

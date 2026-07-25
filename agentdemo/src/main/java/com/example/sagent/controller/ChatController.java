@@ -3,6 +3,7 @@ package com.example.sagent.controller;
 import com.example.sagent.agent.core.AgentService;
 import com.example.sagent.agent.model.AgentResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,7 +25,7 @@ public class ChatController {
     private final AgentService agentService;
     private final ChatMemory chatMemory;
 
-    public ChatController(AgentService agentService, ChatMemory chatMemory) {
+    public ChatController(AgentService agentService, @Qualifier("chatMemory") ChatMemory chatMemory) {
         this.agentService = agentService;
         this.chatMemory = chatMemory;
     }
