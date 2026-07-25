@@ -512,6 +512,11 @@
                     <i class="el-icon-s-check"></i>
                 </button>
             </el-tooltip>
+            <el-tooltip content="产品查询" placement="bottom">
+                <button class="icon-button" type="button" aria-label="产品查询" @click="openProductPanel">
+                    <i class="el-icon-s-data"></i>
+                </button>
+            </el-tooltip>
         </div>
     </header>
 
@@ -577,18 +582,22 @@
         </section>
     </main>
     <!-- 审批管理面板 -->
-    <el-dialog title="审批管理" :visible.sync="approvalDialogVisible" width="700px" top="5vh"
-               :close-on-click-modal="false" @open="fetchPendingApprovals">
+    <el-dialog title="审批管理" :visible.sync="approvalDialogVisible" width="750px" top="5vh"
+               :close-on-click-modal="false" @open="fetchApprovals">
         <div v-if="approvalLoading" style="text-align:center;padding:30px 0;">
             <i class="el-icon-loading"></i> 加载中...
         </div>
-        <div v-else-if="pendingApprovals.length === 0" style="text-align:center;padding:30px 0;color:#909399;">
+        <div v-else-if="approvals.length === 0" style="text-align:center;padding:30px 0;color:#909399;">
             <i class="el-icon-circle-check" style="font-size:36px;color:#67c23a;"></i>
-            <p style="margin-top:12px;font-size:14px;">当前没有待审批的请求</p>
+            <p style="margin-top:12px;font-size:14px;">当前没有审批记录</p>
         </div>
-        <el-table v-else :data="pendingApprovals" style="width:100%" stripe>
+        <el-table v-else :data="approvals" style="width:100%" stripe>
             <el-table-column label="编号" prop="id" width="60" align="center"></el-table-column>
-            <el-table-column label="会话" prop="conversationId" min-width="120" show-overflow-tooltip></el-table-column>
+            <el-table-column label="状态" width="80" align="center">
+                <template slot-scope="scope">
+                    <el-tag :type="statusTagType(scope.row.status)" size="small">{{ statusLabel(scope.row.status) }}</el-tag>
+                </template>
+            </el-table-column>
             <el-table-column label="操作" min-width="200">
                 <template slot-scope="scope">
                     <div style="font-weight:600;">{{ toolLabel(scope.row.toolName) }}</div>
@@ -602,16 +611,41 @@
             </el-table-column>
             <el-table-column label="操作" width="160" align="center">
                 <template slot-scope="scope">
-                    <el-button type="success" size="mini" :loading="btnLoading === scope.row.id"
-                               @click="approveApproval(scope.row)">批准</el-button>
-                    <el-button type="danger" size="mini" :loading="btnRejectLoading === scope.row.id"
-                               @click="rejectApproval(scope.row)">拒绝</el-button>
+                    <template v-if="scope.row.status === 'PENDING'">
+                        <el-button type="success" size="mini" :loading="btnLoading === scope.row.id"
+                                   @click="approveApproval(scope.row)">批准</el-button>
+                        <el-button type="danger" size="mini" :loading="btnRejectLoading === scope.row.id"
+                                   @click="rejectApproval(scope.row)">拒绝</el-button>
+                    </template>
+                    <span v-else style="color:#909399;font-size:12px;">{{ scope.row.result }}</span>
                 </template>
             </el-table-column>
         </el-table>
         <span slot="footer">
             <el-button @click="approvalDialogVisible = false">关闭</el-button>
-            <el-button type="primary" @click="fetchPendingApprovals">刷新</el-button>
+            <el-button type="primary" @click="fetchApprovals">刷新</el-button>
+        </span>
+    </el-dialog>
+
+    <!-- 产品查询对话框 -->
+    <el-dialog title="产品查询" :visible.sync="productDialogVisible" width="700px" top="5vh"
+               @open="fetchProducts">
+        <div v-if="productLoading" style="text-align:center;padding:30px 0;">
+            <i class="el-icon-loading"></i> 加载中...
+        </div>
+        <div v-else-if="products.length === 0" style="text-align:center;padding:30px 0;color:#909399;">
+            <p>暂无产品数据</p>
+        </div>
+        <el-table v-else :data="products" style="width:100%" stripe>
+            <el-table-column label="ID" prop="id" width="60" align="center"></el-table-column>
+            <el-table-column label="名称" prop="name" min-width="150"></el-table-column>
+            <el-table-column label="分类" prop="category" width="100"></el-table-column>
+            <el-table-column label="价格" prop="price" width="100" align="right"></el-table-column>
+            <el-table-column label="库存" prop="stock" width="80" align="center"></el-table-column>
+        </el-table>
+        <span slot="footer">
+            <el-button @click="productDialogVisible = false">关闭</el-button>
+            <el-button type="primary" @click="fetchProducts">刷新</el-button>
         </span>
     </el-dialog></div>
 
@@ -630,10 +664,13 @@
                 nextId: 1,
                 statusText: "就绪",
                 approvalDialogVisible: false,
-                pendingApprovals: [],
+                approvals: [],
                 approvalLoading: false,
                 btnLoading: null,
-                btnRejectLoading: null
+                btnRejectLoading: null,
+                productDialogVisible: false,
+                products: [],
+                productLoading: false
             };
         },
         mounted: function () {
@@ -810,17 +847,20 @@
             openApprovalPanel: function () {
                 this.approvalDialogVisible = true;
                 this.$nextTick(function () {
-                    this.fetchPendingApprovals();
+                    this.fetchApprovals();
                 });
             },
-            fetchPendingApprovals: async function () {
+            openProductPanel: function () {
+                this.productDialogVisible = true;
+            },
+            fetchApprovals: async function () {
                 this.approvalLoading = true;
                 try {
-                    var response = await fetch("/ai/approvals/pending");
+                    var response = await fetch("/ai/approvals/all");
                     if (response.ok) {
                         var data = await response.json();
                         console.log("审批列表API返回:", data);
-                        this.pendingApprovals = Array.isArray(data) ? data : [];
+                        this.approvals = Array.isArray(data) ? data : [];
                     } else {
                         console.error("审批列表API错误:", response.status, response.statusText);
                         this.$message.error("获取审批列表失败（HTTP " + response.status + "）");
@@ -832,6 +872,22 @@
                     this.approvalLoading = false;
                 }
             },
+            fetchProducts: async function () {
+                this.productLoading = true;
+                try {
+                    var response = await fetch("/ai/approvals/products");
+                    if (response.ok) {
+                        var data = await response.json();
+                        this.products = Array.isArray(data) ? data : [];
+                    } else {
+                        this.$message.error("获取产品列表失败");
+                    }
+                } catch (error) {
+                    this.$message.error("获取产品列表失败：" + error.message);
+                } finally {
+                    this.productLoading = false;
+                }
+            },
             approveApproval: async function (record) {
                 this.btnLoading = record.id;
                 try {
@@ -840,10 +896,10 @@
                     });
                     var result = await response.json();
                     if (result.success) {
-                        await this.fetchPendingApprovals();
+                        await this.fetchApprovals();
                         this.$message({
                             type: "success",
-                            message: "审批通过：\n" + result.result,
+                            message: "审批通过：" + result.result,
                             duration: 5000,
                             showClose: true
                         });
@@ -864,7 +920,7 @@
                     });
                     var result = await response.json();
                     if (result.success) {
-                        await this.fetchPendingApprovals();
+                        await this.fetchApprovals();
                         this.$message({
                             type: "info",
                             message: "审批请求 #" + record.id + " 已拒绝",
@@ -878,6 +934,12 @@
                 } finally {
                     this.btnRejectLoading = null;
                 }
+            },
+            statusLabel: function (status) {
+                return { PENDING: "待审批", APPROVED: "已通过", REJECTED: "已拒绝" }[status] || status;
+            },
+            statusTagType: function (status) {
+                return { PENDING: "warning", APPROVED: "success", REJECTED: "danger" }[status] || "info";
             },
             toolLabel: function (toolName) {
                 return {

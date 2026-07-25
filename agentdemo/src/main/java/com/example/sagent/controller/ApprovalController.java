@@ -4,9 +4,11 @@ import com.example.sagent.agent.approval.ApprovalService;
 import com.example.sagent.agent.approval.ApprovalBypass;
 import com.example.sagent.agent.approval.ToolRegistry;
 import com.example.sagent.agent.model.ApprovalRecord;
+import com.example.sagent.agent.model.Product;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -21,15 +23,34 @@ public class ApprovalController {
 
     private final ApprovalService approvalService;
     private final ToolRegistry toolRegistry;
+    private final JdbcClient jdbcClient;
 
-    public ApprovalController(ApprovalService approvalService, ToolRegistry toolRegistry) {
+    public ApprovalController(ApprovalService approvalService, ToolRegistry toolRegistry, JdbcClient jdbcClient) {
         this.approvalService = approvalService;
         this.toolRegistry = toolRegistry;
+        this.jdbcClient = jdbcClient;
+    }
+
+    @GetMapping("/all")
+    public List<ApprovalRecord> listAll() {
+        return approvalService.listAll();
     }
 
     @GetMapping("/pending")
     public List<ApprovalRecord> listPending() {
         return approvalService.listPending();
+    }
+
+    @GetMapping("/products")
+    public List<Product> listProducts() {
+        return jdbcClient.sql("select id, name, category, price, stock from products order by id")
+                .query((rs, rowNum) -> new Product(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("category"),
+                        rs.getBigDecimal("price"),
+                        rs.getInt("stock")
+                )).list();
     }
 
     @PostMapping("/{id}/approve")
