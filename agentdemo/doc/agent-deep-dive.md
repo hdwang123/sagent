@@ -489,27 +489,63 @@ flowchart TD
 
 ## 八、关键技术总结
 
-### 8.1 内存隔离
+### 8.1 双窗口记忆架构
+
+一个容易被忽视的问题是：LLM 在对话历史中看到之前的工具查询结果后，会倾向于直接复述旧数据，而不是重新调用工具获取最新数据。单纯靠 Prompt 约束不可靠。
+
+Sagent 采用**双窗口记忆架构**来解决这个问题：
+
+```
+工具类处理器（SKILL/GSKILL/ASKILL/MCP）    →  小窗口记忆（4条消息，2轮对话）
+对话类处理器（CHAT/RAG）                  →  大窗口记忆（20条消息）
+```
+
+**设计原则**：按数据时效性需求，区分记忆策略。
+
+- **大窗口（20条）**：对话上下文型数据，需要在多轮对话中延续
+- **小窗口（4条**）：实时查询型数据，旧结果留在记忆里是"毒药"，越快淘汰越好
+
+4条消息（2轮对话）的窗口意味着：超过2轮后，旧数据已被淘汰，LLM 必须重新调用工具。这本质上是借鉴了**缓存过期策略**的思路——实时数据给短 TTL，上下文数据给长 TTL。
+
+**实现**：
+
+```java
+// ChatMemoryConfiguration.java
+@Bean
+ChatMemory chatMemory() {           // 大窗口：普通聊天/RAG用
+    return MessageWindowChatMemory.builder()
+            .maxMessages(20).build();
+}
+
+@Bean
+ChatMemory toolChatMemory() {       // 小窗口：工具类处理器用
+    return MessageWindowChatMemory.builder()
+            .maxMessages(4).build();
+}
+```
+
+各处理器通过 `@Qualifier` 注入对应的 `MessageChatMemoryAdvisor`。
+
+### 8.2 分类器与重排序内存隔离
 
 - **分类器内存**：独立的 `ChatClient`，不使用记忆
-- **处理器内存**：共享 `MessageChatMemoryAdvisor`，支持多轮对话
 - **重排序内存**：独立的 `rerankClient`，避免会话 ID 干扰
 
-### 8.2 安全约束
+### 8.3 安全约束
 
 - 文件操作限制在系统临时目录
 - 工具调用限制单次调用（SKILL）或受控循环（GSKILL）
 - 敏感操作需人工审批（ASKILL）
 - 路径遍历攻击防护
 
-### 8.3 审批安全机制
+### 8.4 审批安全机制
 
 - **AOP 拦截**：`@Approval(enable=true)` 统一拦截所有敏感 Tool 方法
 - **ThreadLocal 隔离**：`ApprovalBypass` 区分 LLM 调用和审批面板执行
 - **反射唤起**：`ToolRegistry` 审批通过后自动唤起原始方法
 - **会话隔离**：`ApprovalContext` 传递会话 ID，每个会话的审批记录独立
 
-### 8.4 延迟初始化
+### 8.5 延迟初始化
 
 MCP 客户端采用延迟初始化，首次请求时才建立连接，避免启动依赖。
 
@@ -536,7 +572,7 @@ http://localhost:8080/chat.html
 
 ## 十、结语
 
-智能 Agent 的核心在于**决策（消息分类）、知识（RAG）、执行（工具调用）和安全（审批机制）**四者的有机结合。Sagent 项目展示了如何基于 Spring AI 2.0 构建一个架构清晰、功能完整的智能 Agent 系统。
+智能 Agent 的核心在于**决策（消息分类）、知识（RAG）、执行（工具调用）和安全（审批机制）**四者的有机结合，同时需要**双窗口记忆架构**来确保数据时效性。Sagent 项目展示了如何基于 Spring AI 2.0 构建一个架构清晰、功能完整的智能 Agent 系统。
 
 如果你正在构建自己的 Agent 系统，希望本文能给你带来启发。欢迎在 GitHub 上 Star 和 Fork 项目，一起交流学习！
 

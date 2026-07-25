@@ -64,7 +64,7 @@ flowchart TD
 
 **设计要点**：
 - 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录。分类优先级：`SKILL > GSKILL > ASKILL > RAG > MCP > CHAT`
-- 六个最终处理分支共享同一份会话记忆
+- **双窗口记忆架构**：CHAT/RAG 使用大窗口记忆（20条消息），保证多轮对话连贯；SKILL/GSKILL/ASKILL/MCP 使用小窗口记忆（4条消息），让旧查询结果快速淘汰，迫使 LLM 重新调用工具获取最新数据
 - SKILL 单次调用单一工具，不进入工具调用循环
 - GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 - ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
@@ -388,7 +388,7 @@ mvn test
 ## 注意事项
 
 - 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空
-- 每个会话最多保留 20 条消息
+- 双窗口记忆架构：CHAT/RAG 使用大窗口（20条消息），工具类处理器（SKILL/GSKILL/ASKILL/MCP）使用小窗口（4条消息），防止 LLM 复述历史查询结果而不重新调用工具
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库查询走 GSKILL/DataBaseSkill，删除和修改操作需通过 ASKILL/ApprovalSqlSkill 审批后方可执行
 - SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
