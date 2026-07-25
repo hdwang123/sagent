@@ -7,8 +7,9 @@
 1. **决策能力**：理解用户意图并选择正确的处理路径
 2. **知识能力**：拥有领域知识，回答专业问题
 3. **执行能力**：调用工具完成实际任务
+4. **安全能力**：敏感操作需人工审批方可执行
 
-[Sagent](https://github.com/hdwang123/sagent) 正是基于这三大能力构建的智能 Agent 示例项目。它基于 Spring AI 2.0 框架，实现了完整的消息路由、知识库检索和工具调用能力，是学习和理解智能 Agent 架构的优秀参考。
+[Sagent](https://github.com/hdwang123/sagent) 正是基于这四大能力构建的智能 Agent 示例项目。它基于 Spring AI 2.0 框架，实现了完整的消息路由、知识库检索和工具调用能力，是学习和理解智能 Agent 架构的优秀参考。
 
 ### 1.1 为什么选择 Spring AI 2.0
 
@@ -26,6 +27,7 @@ Sagent 项目旨在展示如何构建一个生产级智能 Agent，具体目标�
 - 实现完整的消息分类和路由机制
 - 演示 RAG 知识库检索的最佳实践
 - 展示工具调用循环的实现方式
+- 展示敏感操作的审批安全机制
 - 提供可复用的技能和工具抽象
 - 构建友好的前端交互界面
 
@@ -78,13 +80,14 @@ MCP（Model Context Protocol）是一种标准化的工具调用协议，用于�
 
 ### 3.1 分类体系设计
 
-我们设计了五种消息类型，按优先级从高到低排列：
+我们设计了六种消息类型，按优先级从高到低排列：
 
 | 类型 | 场景 | 特点 |
 |------|------|------|
 | **SKILL** | 企业固定技能 | 单次调用单一工具，不进入循环 |
-| **RAG** | 知识库查询 | 本地向量检索 + LLM 回答 |
 | **GSKILL** | 通用技能 | 多轮工具调用循环 |
+| **ASKILL** | 审批技能 | 敏感操作需人工审批后执行 |
+| **RAG** | 知识库查询 | 本地向量检索 + LLM 回答 |
 | **MCP** | 外部服务 | 通过 MCP 协议调用外部工具 |
 | **CHAT** | 普通聊天 | 兜底的通用对话 |
 
@@ -108,6 +111,9 @@ public RouteDecision classify(String message) {
         
         GSKILL：通用技能（循环调用）
         关键词：数据库、产品查询、时间、闹钟
+        
+        ASKILL：审批技能
+        关键词：删除产品、修改价格、修改库存等敏感数据库操作
         
         MCP：外部服务
         关键词：计算器、天气、股票、系统信息、回显
@@ -302,14 +308,14 @@ public HandlerResult handle(String message, String conversationId) {
 }
 ```
 
-### 5.4 SKILL vs GSKILL 的区别
+### 5.4 SKILL vs GSKILL vs ASKILL 的区别
 
-| 特性 | SKILL（企业固定技能） | GSKILL（通用技能） |
-|------|---------------------|-------------------|
-| 调用模式 | 单次调用，不进入循环 | 多轮工具调用循环 |
-| LLM 角色 | 工具选择器 | 工具选择器 + 任务规划者 |
-| 适用场景 | 明确的单一步骤任务 | 需要多步骤协作的复杂任务 |
-| 示例 | 截图、下载网页 | 数据库查询、多步计算 |
+| 特性 | SKILL（企业固定技能） | GSKILL（通用技能） | ASKILL（审批技能） |
+|------|---------------------|-------------------|-------------------|
+| 调用模式 | 单次调用，不进入循环 | 多轮工具调用循环 | 敏感操作需人工审批 |
+| LLM 角色 | 工具选择器 | 工具选择器 + 任务规划者 | 工具选择器 |
+| 适用场景 | 明确的单一步骤任务 | 需要多步骤协作的复杂任务 | 删除、修改等敏感操作 |
+| 示例 | 截图、下载网页 | 数据库查询、多步计算 | 删除产品、修改价格 |
 
 ### 5.5 循环停止条件
 
@@ -321,7 +327,121 @@ public HandlerResult handle(String message, String conversationId) {
 
 ---
 
-## 六、完整架构
+## 六、ASKILL 审批机制：让人在回路中
+
+对于删除产品、修改价格等敏感操作，直接让 LLM 执行存在安全风险。Sagent 引入了 **ASKILL 审批技能**，通过"人在回路中"（Human-in-the-Loop）的审批机制来保障安全。
+
+### 6.1 核心设计理念
+
+LLM 调用敏感工具时，**不直接执行**，而是创建一条审批记录等待人工确认：
+
+```
+LLM调用deleteProduct → @Approval AOP拦截 → 创建PENDING记录 → 返回等待审批
+用户批准 → ApprovalBypass(ThreadLocal)绕过 → ToolRegistry反射调用原方法 → 真正执行
+```
+
+### 6.2 组件职责
+
+| 组件 | 职责 |
+|------|------|
+| `@Approval(enable=true)` | 标注需要审批的 Tool 方法 |
+| `ApprovalAspect` | AOP 切面，拦截 @Approval 方法，自动创建审批记录 |
+| `ApprovalService` | 审批记录 CRUD（创建 PENDING、批准、拒绝） |
+| `ToolRegistry` | 扫描所有 ASkill Bean 的 @Tool 方法，建立工具名到方法的映射 |
+| `ApprovalBypass` | ThreadLocal 标志，审批面板执行时跳过 AOP 拦截 |
+| `ApprovalContext` | ThreadLocal 上下文，传递会话 ID 和用户 ID |
+
+### 6.3 ASkill 接口设计
+
+```java
+// ASkill.java - 审批技能接口
+public interface ASkill {
+    String getName();
+    String getDescription();
+}
+```
+
+```java
+// ApprovalSqlSkill.java - 审批 SQL 技能实现
+@Component
+public class ApprovalSqlSkill implements ASkill {
+    
+    // 查询方法：无需审批，直接放行
+    @Tool(description = "查询当前会话的所有审批记录")
+    public String getMyApprovals() { ... }
+    
+    @Tool(description = "根据审批编号查询单个审批状态")
+    public String checkApprovalById(String id) { ... }
+    
+    // 写入方法：带 @Approval，需要审批
+    @Tool(description = "删除指定ID的产品")
+    @Approval(enable = true)
+    public String deleteProduct(Long id) { ... }
+    
+    @Tool(description = "修改产品价格")
+    @Approval(enable = true)
+    public String updateProductPrice(Long id, Double newPrice) { ... }
+    
+    @Tool(description = "修改产品库存")
+    @Approval(enable = true)
+    public String updateProductStock(Long id, Integer newStock) { ... }
+}
+```
+
+### 6.4 审批流程详解
+
+**第一步：LLM 调用，AOP 拦截**
+
+```java
+// ApprovalAspect.java
+@Around("@annotation(approval) && execution(* com.example.sagent.agent.skills.ASkill+.*(..))")
+public Object checkApproval(ProceedingJoinPoint joinPoint, Approval approval) {
+    if (ApprovalBypass.isEnabled()) {
+        return joinPoint.proceed(); // 审批面板直调，跳过拦截
+    }
+    // 创建 PENDING 记录并返回
+    String recordId = approvalService.createPending(
+        ApprovalContext.getConversationId(),
+        joinPoint.getSignature().getName(),
+        joinPoint.getArgs()
+    );
+    return "PENDING:" + recordId + " 操作已提交审批，请在审批面板中确认";
+}
+```
+
+**第二步：用户在审批面板批准**
+
+```java
+// ApprovalController.java
+@PostMapping("/approvals/{id}/approve")
+public String approve(@PathVariable String id) {
+    ApprovalRecord record = approvalService.findById(id);
+    
+    // 启用绕过标志，直接执行业务逻辑
+    ApprovalBypass.enable();
+    try {
+        String result = toolRegistry.invokeTool(record.methodName(), record.args());
+        approvalService.approve(id);
+        return result;
+    } finally {
+        ApprovalBypass.clear();
+    }
+}
+```
+
+### 6.5 为什么这么设计
+
+这个方案引入了 AOP + ThreadLocal + ToolRegistry 三块基础设施，看似复杂，但这是追求**通用性**必须付出的代价：
+
+- **AOP**：统一拦截所有 @Approval 方法，新增加敏感操作只需加注解，无需改业务代码
+- **ThreadLocal**：区分"LLM 调用"和"审批面板执行"两个来源，同一条链路两个角色无缝切换
+- **ToolRegistry**：反射扫描 ASkill Bean 的 @Tool 方法，审批通过后自动唤起，不依赖具体类名
+
+去掉任何一个都会牺牲通用性。简化方案（比如审批面板直接调 Service 层 SQL）虽然代码少，但每新增一个敏感操作就需要加 case，不具备复用性。
+
+---
+
+## 七、完整架构
 
 ```mermaid
 flowchart TD
@@ -331,16 +451,21 @@ flowchart TD
     MC --> D{"分类结果"}
     
     D -->|"SKILL"| SH["SkillHandler"]
-    SH --> WT["WebPageTool"]
-    SH --> CT["CompressionTool"]
+    SH --> WT["WebPageDownloadSkill"]
+    
+    D -->|"GSKILL"| GSH["GSkillHandler"]
+    GSH --> DB["DataBaseSkill"]
+    GSH --> AK["AlarmSkill"]
+    
+    D -->|"ASKILL"| AH["ASkillHandler"]
+    AH --> APS["ApprovalSqlSkill"]
+    APS --> APV["ApprovalService<br/>(创建PENDING)"]
+    APV --> UI["审批面板<br/>批准/拒绝"]
+    UI --> TR["ToolRegistry<br/>(重新唤起)"]
     
     D -->|"RAG"| RH["RagHandler"]
     RH --> VS["VectorStore"]
     RH --> EM["EmbeddingModel"]
-    
-    D -->|"GSKILL"| GSH["GSkillHandler"]
-    GSH --> DB["DataBaseSkill"]
-    GSH --> ASK["AlarmSkill"]
     
     D -->|"MCP"| MH["McpHandler"]
     MH --> MS["MCP Server"]
@@ -348,9 +473,9 @@ flowchart TD
     D -->|"CHAT"| CH["ChatHandler"]
     
     WT --> FC["FileController"]
-    CT --> FC
     
     SH --> MEM["ChatMemory"]
+    AH --> MEM
     RH --> MEM
     GSH --> MEM
     MH --> MEM
@@ -362,27 +487,35 @@ flowchart TD
 
 ---
 
-## 七、关键技术总结
+## 八、关键技术总结
 
-### 7.1 内存隔离
+### 8.1 内存隔离
 
 - **分类器内存**：独立的 `ChatClient`，不使用记忆
 - **处理器内存**：共享 `MessageChatMemoryAdvisor`，支持多轮对话
 - **重排序内存**：独立的 `rerankClient`，避免会话 ID 干扰
 
-### 7.2 安全约束
+### 8.2 安全约束
 
 - 文件操作限制在系统临时目录
 - 工具调用限制单次调用（SKILL）或受控循环（GSKILL）
+- 敏感操作需人工审批（ASKILL）
 - 路径遍历攻击防护
 
-### 7.3 延迟初始化
+### 8.3 审批安全机制
+
+- **AOP 拦截**：`@Approval(enable=true)` 统一拦截所有敏感 Tool 方法
+- **ThreadLocal 隔离**：`ApprovalBypass` 区分 LLM 调用和审批面板执行
+- **反射唤起**：`ToolRegistry` 审批通过后自动唤起原始方法
+- **会话隔离**：`ApprovalContext` 传递会话 ID，每个会话的审批记录独立
+
+### 8.4 延迟初始化
 
 MCP 客户端采用延迟初始化，首次请求时才建立连接，避免启动依赖。
 
 ---
 
-## 八、快速上手
+## 九、快速上手
 
 ```bash
 # 克隆项目
@@ -401,9 +534,9 @@ http://localhost:8080/chat.html
 
 ---
 
-## 九、结语
+## 十、结语
 
-智能 Agent 的核心在于**决策（消息分类）、知识（RAG）和执行（工具调用）**三者的有机结合。Sagent 项目展示了如何基于 Spring AI 2.0 构建一个架构清晰、功能完整的智能 Agent 系统。
+智能 Agent 的核心在于**决策（消息分类）、知识（RAG）、执行（工具调用）和安全（审批机制）**四者的有机结合。Sagent 项目展示了如何基于 Spring AI 2.0 构建一个架构清晰、功能完整的智能 Agent 系统。
 
 如果你正在构建自己的 Agent 系统，希望本文能给你带来启发。欢迎在 GitHub 上 Star 和 Fork 项目，一起交流学习！
 
