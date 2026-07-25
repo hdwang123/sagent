@@ -6,8 +6,8 @@ package com.example.sagent.agent.skills;
  */
 public final class ApprovalContext {
 
-    private static final InheritableThreadLocal<String> CONVERSATION_ID = new InheritableThreadLocal<>();
-    private static final InheritableThreadLocal<String> USER_ID = new InheritableThreadLocal<>();
+    private static final ThreadLocal<String> CONVERSATION_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> USER_ID = new ThreadLocal<>();
 
     private ApprovalContext() {
     }

@@ -19,9 +19,11 @@ public class ApprovalAspect {
     private static final Logger LOGGER = LoggerFactory.getLogger(ApprovalAspect.class);
 
     private final ApprovalService approvalService;
+    private final UserIdResolver userIdResolver;
 
-    public ApprovalAspect(ApprovalService approvalService) {
+    public ApprovalAspect(ApprovalService approvalService, UserIdResolver userIdResolver) {
         this.approvalService = approvalService;
+        this.userIdResolver = userIdResolver;
     }
 
     @Around("execution(* com.example.sagent.agent.skills.ASkill+.*(..)) && @annotation(approval)")
@@ -41,11 +43,10 @@ public class ApprovalAspect {
 
         Object[] args = pjp.getArgs();
 
-        String userId = ApprovalContext.getUserId();
-        if (userId == null) {
-            userId = "anonymous";
-            LOGGER.warn("ApprovalContext.userId is null, using fallback 'anonymous' for {}", methodName);
-        }
+        // 从会话入口绑定的 conversationId 推导 userId，不依赖 ThreadLocal 传递
+        String conversationId = ApprovalContext.getConversationId();
+        String userId = userIdResolver.resolve(conversationId);
+        LOGGER.info("resolved userId={} from conversationId={}", userId, conversationId);
 
         // 按方法参数名生成 JSON，与 ToolController.resolveArgs 解析格式一致
         MethodSignature sig = (MethodSignature) pjp.getSignature();
