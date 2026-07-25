@@ -36,6 +36,12 @@ public class ApprovalController {
     public ResponseEntity<Map<String, Object>> approve(@PathVariable String id) {
         try {
             ApprovalRecord record = approvalService.getRecord(id);
+            if (!"PENDING".equals(record.status())) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "该记录已被处理，状态为: " + record.status()
+                ));
+            }
             ToolRegistry.ToolEntry entry = toolRegistry.getTool(record.toolName());
             Object[] args = resolveArgs(entry.method(), record.argsJson());
             String result;
