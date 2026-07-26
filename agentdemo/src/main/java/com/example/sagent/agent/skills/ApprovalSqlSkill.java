@@ -128,8 +128,8 @@ public class ApprovalSqlSkill implements ASkill {
                 rs.getString("status"),
                 rs.getString("result"),
                 null,
-                null,
-                null
+                rs.getTimestamp("create_time") != null ? rs.getTimestamp("create_time").toLocalDateTime() : null,
+                rs.getTimestamp("update_time") != null ? rs.getTimestamp("update_time").toLocalDateTime() : null
         );
     }
 }

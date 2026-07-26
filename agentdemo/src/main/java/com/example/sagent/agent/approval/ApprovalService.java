@@ -37,7 +37,7 @@ public class ApprovalService {
     }
 
     public Optional<ApprovalRecord> findExisting(String userId, String toolName, String argsJson) {
-        return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? order by create_time desc limit 1".formatted(COLS, TABLE))
+        return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? and status = 'PENDING' order by create_time desc limit 1".formatted(COLS, TABLE))
                 .param(userId).param(toolName).param(argsJson)
                 .query(this::mapRecord).optional();
     }
