@@ -4,8 +4,6 @@ import com.example.sagent.agent.approval.ApprovalService;
 import com.example.sagent.agent.approval.ApprovalBypass;
 import com.example.sagent.agent.approval.ToolRegistry;
 import com.example.sagent.agent.model.ApprovalRecord;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,8 +14,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/ai/approvals")
 public class ApprovalController {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ApprovalService approvalService;
     private final ToolRegistry toolRegistry;
@@ -47,12 +43,10 @@ public class ApprovalController {
                         "error", "该记录已被处理，状态为: " + record.status()
                 ));
             }
-            ToolRegistry.ToolEntry entry = toolRegistry.getTool(record.toolName());
-            Object[] args = resolveArgs(entry.method(), record.argsJson());
             String result;
             ApprovalBypass.enable();
             try {
-                result = toolRegistry.invokeTool(record.toolName(), args);
+                result = toolRegistry.resolveTool(record.toolName()).call(record.argsJson());
             } finally {
                 ApprovalBypass.disable();
             }
@@ -84,19 +78,5 @@ public class ApprovalController {
             error.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
-    }
-
-    private Object[] resolveArgs(java.lang.reflect.Method method, String argsJson) throws Exception {
-        Map<String, Object> argMap = MAPPER.readValue(argsJson,
-                new TypeReference<Map<String, Object>>() {});
-        java.lang.reflect.Parameter[] params = method.getParameters();
-        Object[] result = new Object[params.length];
-        for (int i = 0; i < params.length; i++) {
-            Object raw = argMap.get(params[i].getName());
-            if (raw != null) {
-                result[i] = MAPPER.convertValue(raw, params[i].getType());
-            }
-        }
-        return result;
     }
 }

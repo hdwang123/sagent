@@ -18,9 +18,9 @@ public class SkillHandler implements AgentHandler {
 
     private static final String SYSTEM_PROMPT = """
             你是技能执行助手。分析用户请求，找到一个最合适的工具即可调用，不要调用多个工具。
-            
+
             如果没有合适的工具，直接回答用户问题，不需要强行调用工具。
-            
+
             工具调用完成后，用中文总结结果给用户。**必须保留工具返回的所有下载链接（/files/download/开头的URL），不要省略或改写**。
             """;
 

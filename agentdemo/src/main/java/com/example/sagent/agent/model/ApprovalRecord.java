@@ -13,7 +13,6 @@ public record ApprovalRecord(
         LocalDateTime createTime,
         LocalDateTime updateTime
 ) {
-
     public ApprovalRecord(String userId, String toolName, String argsJson) {
         this(null, userId, toolName, argsJson, "PENDING", null, null, LocalDateTime.now(), null);
     }
