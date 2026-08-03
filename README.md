@@ -24,7 +24,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
 - **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图；中文文件名通过 RFC 5987 `filename*` 编码，避免 Tomcat 丢弃含非 ASCII 字符的 `Content-Disposition` 响应头
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
-- **多 Agent 编排（演示版）**：Planner 拆解任务 → Executor 按依赖并行执行（复用现有 Handler，含异常/超时/死锁兜底）→ 汇总 Agent 生成最终回答，支持"查询数据 → 生成文档"等复合任务（详见附录章节）
+- **多 Agent 编排（演示版）**：Planner 拆解任务 → Executor 按依赖并行执行（复用现有 Handler，含异常/超时/死锁兜底 + 失败纠偏：重试/重新规划/止损）→ 汇总 Agent 生成最终回答，支持"查询数据 → 生成文档"等复合任务（详见附录章节）
 - **前端界面**：Vue 2 + Element UI 聊天测试页面
 - **详细响应**：返回路由类型、分类理由和 RAG 来源
 
@@ -460,11 +460,17 @@ flowchart TD
     FILTER --> EMPTY{"ready 是否为空？"}
     EMPTY -- "是（循环依赖/依赖id不存在）" --> FAIL["剩余任务标记为 error 结果<br/>break 退出循环"]
     EMPTY -- "否" --> REMOVE["pending 移除 ready"]
-    REMOVE --> RUN["scheduleTask 线程池并行执行 ready<br/>（独立会话 + 60s 超时 + 异常降级）"]
+    REMOVE --> RUN["scheduleTask 线程池并行执行 ready<br/>（独立会话 + 60s 超时 + 异常降级 + 失败重试）"]
     RUN --> INJECT["子Agent 有依赖时<br/>按 id 查依赖结果拼入 goal"]
     INJECT --> JOIN["allOf().join()<br/>等待本波次全部完成"]
     JOIN --> STORE["本波次结果写入 results<br/>key = 子任务 id"]
-    STORE --> WHILE
+    STORE --> CHECK{"本轮有失败任务？"}
+    CHECK -- "否" --> WHILE
+    CHECK -- "是" --> REPLAN{"还能重新规划？<br/>replanCount < 2"}
+    REPLAN -- "是（方案B）" --> DOREPLAN["调 Planner 重新规划剩余<br/>pending 替换为新任务(r1/r2)<br/>已完成结果保留"]
+    DOREPLAN --> WHILE
+    REPLAN -- "否（方案E）" --> STOPLOSS["递归标记依赖失败链的<br/>后续任务止损跳过"]
+    STOPLOSS --> WHILE
     FAIL --> AGG
 
     WHILE -- "是（全部完成）" --> AGG["汇总 Agent<br/>整合所有子任务结果"]
@@ -502,7 +508,8 @@ flowchart TD
 - 每个子任务带唯一 `id`（由 Planner 生成，如 t1/t2），`dependsOn` 引用依赖任务的 id（不再用 goal 原文），避免 LLM 输出文本不一致导致依赖匹配失败
 - 每个子任务使用独立会话 ID 执行，避免污染主会话
 - 子任务声明 `dependsOn` 时，按 id 查依赖任务的执行结果拼入 goal，供子 Agent 参考（如"生成文档"依赖"查询产品数据"）
-- 健壮性：单个子任务异常（try-catch）、超时（60s orTimeout）、死锁（循环依赖/依赖id不存在时剩余任务标记失败跳过）都不会中断整轮编排，统一降级为 error 结果
+- 健壮性（三层兜底）：单个子任务异常（try-catch）、超时（60s orTimeout）、死锁（循环依赖/依赖id不存在时剩余任务标记失败跳过）都不会中断整轮编排，统一降级为 error 结果
+- 失败纠偏（递进式）：① 方案A——子任务失败自动重试 1 次，重试时把失败原因拼入 goal 提示换方式；② 方案B——重试仍失败则调 Planner 基于已完成结果和失败原因重新规划剩余任务（最多 2 次，新任务 id 用 r1/r2）；③ 方案E——重新规划次数用完后，递归标记依赖失败链的后续任务止损跳过，不白跑注定无意义的子任务
 - 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
 
 ## 附录：工具调用循环
