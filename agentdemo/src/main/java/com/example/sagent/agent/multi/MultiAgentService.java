@@ -143,7 +143,8 @@ public class MultiAgentService {
 
     /**
      * Executor：按依赖关系分波次执行子任务，无依赖的任务并行执行。
-     * 结果以子任务 id 为键；单个子任务异常或超时不会中断整轮编排，会降级为错误结果。
+     * 结果以子任务 id 为键；单个子任务异常或超时不会中断整轮编排，会降级为错误结果；
+     * 出现循环依赖或依赖id不存在时，剩余任务标记失败跳过，不盲目执行。
      *
      * @param conversationId 会话ID
      * @param tasks          子任务列表
@@ -160,9 +161,16 @@ public class MultiAgentService {
                             || t.dependsOn().stream().allMatch(results::containsKey))
                     .toList();
             if (ready.isEmpty()) {
-                LOGGER.warn("任务依赖无法满足，剩余任务直接并行执行: {}",
-                        pending.stream().map(Task::goal).toList());
-                ready = List.copyOf(pending);
+                // 死锁防护：存在循环依赖或依赖指向不存在的任务id，剩余任务永远无法满足依赖。
+                // 不盲目执行（违背依赖语义），改为标记失败并退出，明确暴露LLM输出的依赖问题。
+                LOGGER.warn("依赖无法满足（循环依赖或依赖id不存在），剩余任务标记失败跳过: {}",
+                        pending.stream().map(t -> t.id() + ":" + t.goal()).toList());
+                for (Task t : pending) {
+                    results.put(t.id(), new HandlerResult(
+                            "子任务[" + t.goal() + "]因依赖无法满足而跳过（循环依赖或依赖id不存在）",
+                            List.of(), true));
+                }
+                break;
             }
             pending.removeAll(ready);
 
