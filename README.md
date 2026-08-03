@@ -15,7 +15,6 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **GSKILL 通用技能**：由大模型决定调用工具计划，支持多轮工具调用循环
   - `DataBaseSkill`：H2 内存数据库查询
   - `AlarmSkill`：获取时间、设置闹钟
-- **多 Agent 编排（演示版）**：Planner 拆解任务 → Executor 按依赖并行执行（复用现有 Handler）→ 汇总 Agent 生成最终回答，支持"查询数据 → 生成文档"等复合任务
 - **ASKILL 审批技能**：敏感操作需人工审批，审批通过后自动执行
   - `ApprovalSqlSkill`：产品删除、修改价格、修改库存（需审批）
   - 审批机制：`@Approval(enable=true)` 标记的方法被 LLM 调用时自动创建 PENDING 记录
@@ -25,6 +24,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
 - **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图；中文文件名通过 RFC 5987 `filename*` 编码，避免 Tomcat 丢弃含非 ASCII 字符的 `Content-Disposition` 响应头
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
+- **多 Agent 编排（演示版）**：Planner 拆解任务 → Executor 按依赖并行执行（复用现有 Handler）→ 汇总 Agent 生成最终回答，支持"查询数据 → 生成文档"等复合任务（详见附录章节）
 - **前端界面**：Vue 2 + Element UI 聊天测试页面
 - **详细响应**：返回路由类型、分类理由和 RAG 来源
 
