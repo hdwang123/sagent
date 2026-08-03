@@ -4,6 +4,8 @@ import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.skills.Skill;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -15,6 +17,8 @@ import java.util.List;
 
 @Component
 public class SkillHandler implements AgentHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SkillHandler.class);
 
     private static final String SYSTEM_PROMPT = """
             你是技能执行助手。分析用户请求，找到一个最合适的工具即可调用，不要调用多个工具。
@@ -47,17 +51,22 @@ public class SkillHandler implements AgentHandler {
 
     @Override
     public HandlerResult handle(String conversationId, String message) {
-        String answer = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(message)
-                .tools(skills.toArray())
-                .advisors(advisor -> advisor.param(
-                        ChatMemory.CONVERSATION_ID,
-                        conversationId
-                ))
-                .call()
-                .content();
+        try {
+            String answer = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(message)
+                    .tools(skills.toArray())
+                    .advisors(advisor -> advisor.param(
+                            ChatMemory.CONVERSATION_ID,
+                            conversationId
+                    ))
+                    .call()
+                    .content();
 
-        return new HandlerResult(answer);
+            return new HandlerResult(answer);
+        } catch (Exception e) {
+            LOGGER.error("SkillHandler处理失败", e);
+            return new HandlerResult("技能执行失败：" + e.getMessage(), List.of(), true);
+        }
     }
 }

@@ -3,11 +3,15 @@ package com.example.sagent.agent.handlers;
 import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * 聊天处理器
@@ -15,6 +19,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ChatHandler implements AgentHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ChatHandler.class);
 
     private final ChatClient chatClient;
 
@@ -52,15 +58,20 @@ public class ChatHandler implements AgentHandler {
      */
     @Override
     public HandlerResult handle(String conversationId, String message) {
-        String answer = chatClient.prompt()
-                .system("你是 Sagent 助手。请准确、简洁地使用中文回答用户。")
-                .user(message)
-                .advisors(advisor -> advisor.param(
-                        ChatMemory.CONVERSATION_ID,
-                        conversationId
-                ))
-                .call()
-                .content();
-        return new HandlerResult(answer);
+        try {
+            String answer = chatClient.prompt()
+                    .system("你是 Sagent 助手。请准确、简洁地使用中文回答用户。")
+                    .user(message)
+                    .advisors(advisor -> advisor.param(
+                            ChatMemory.CONVERSATION_ID,
+                            conversationId
+                    ))
+                    .call()
+                    .content();
+            return new HandlerResult(answer);
+        } catch (Exception e) {
+            LOGGER.error("ChatHandler处理失败", e);
+            return new HandlerResult("聊天处理失败：" + e.getMessage(), List.of(), true);
+        }
     }
 }

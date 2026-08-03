@@ -103,43 +103,48 @@ public class RagHandler implements AgentHandler {
      */
     @Override
     public HandlerResult handle(String conversationId, String message) {
-        String retrievalQuery = conversationHistory.retrievalQuery(conversationId, message);
+        try {
+            String retrievalQuery = conversationHistory.retrievalQuery(conversationId, message);
 
-        // 1. 混合检索：向量 + 关键词，召回 Top-10
-        List<VectorKnowledgeRetriever.KnowledgeHit> hybridHits = knowledgeRetriever.hybridSearch(retrievalQuery, HYBRID_TOP_K);
+            // 1. 混合检索：向量 + 关键词，召回 Top-10
+            List<VectorKnowledgeRetriever.KnowledgeHit> hybridHits = knowledgeRetriever.hybridSearch(retrievalQuery, HYBRID_TOP_K);
 
-        // 2. LLM 重排序：精排选出 Top-3
-        List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(message, hybridHits, RERANKED_TOP_K);
+            // 2. LLM 重排序：精排选出 Top-3
+            List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(message, hybridHits, RERANKED_TOP_K);
 
-        String context = hits.isEmpty()
-                ? "没有检索到相关知识库内容。"
-                : hits.stream()
-                        .map(hit -> "[来源: " + hit.source() + "]\n" + hit.content())
-                        .collect(Collectors.joining("\n\n---\n\n"));
+            String context = hits.isEmpty()
+                    ? "没有检索到相关知识库内容。"
+                    : hits.stream()
+                            .map(hit -> "[来源: " + hit.source() + "]\n" + hit.content())
+                            .collect(Collectors.joining("\n\n---\n\n"));
 
-        String answer = chatClient.prompt()
-                .system(RAG_SYSTEM_PROMPT)
-                .user(user -> user.text("""
-                                用户问题：
-                                {question}
+            String answer = chatClient.prompt()
+                    .system(RAG_SYSTEM_PROMPT)
+                    .user(user -> user.text("""
+                                    用户问题：
+                                    {question}
 
-                                知识库上下文：
-                                {context}
-                                """)
-                        .param("question", message)
-                        .param("context", context))
-                .advisors(advisor -> advisor.param(
-                        ChatMemory.CONVERSATION_ID,
-                        conversationId
-                ))
-                .call()
-                .content();
+                                    知识库上下文：
+                                    {context}
+                                    """)
+                            .param("question", message)
+                            .param("context", context))
+                    .advisors(advisor -> advisor.param(
+                            ChatMemory.CONVERSATION_ID,
+                            conversationId
+                    ))
+                    .call()
+                    .content();
 
-        List<String> sources = hits.stream()
-                .map(VectorKnowledgeRetriever.KnowledgeHit::source)
-                .distinct()
-                .toList();
-        return new HandlerResult(answer, sources);
+            List<String> sources = hits.stream()
+                    .map(VectorKnowledgeRetriever.KnowledgeHit::source)
+                    .distinct()
+                    .toList();
+            return new HandlerResult(answer, sources);
+        } catch (Exception e) {
+            LOGGER.error("RagHandler处理失败", e);
+            return new HandlerResult("知识库检索失败：" + e.getMessage(), List.of(), true);
+        }
     }
 
     /**

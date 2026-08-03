@@ -4,6 +4,8 @@ import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.skills.GSkill;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -19,6 +21,8 @@ import java.util.List;
  */
 @Component
 public class GSkillHandler implements AgentHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GSkillHandler.class);
 
     /**
      * 通用技能执行系统提示词
@@ -71,17 +75,22 @@ public class GSkillHandler implements AgentHandler {
      */
     @Override
     public HandlerResult handle(String conversationId, String message) {
-        String answer = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(message)
-                .tools(skills.toArray())
-                .advisors(advisor -> advisor.param(
-                        ChatMemory.CONVERSATION_ID,
-                        conversationId
-                ))
-                .call()
-                .content();
+        try {
+            String answer = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(message)
+                    .tools(skills.toArray())
+                    .advisors(advisor -> advisor.param(
+                            ChatMemory.CONVERSATION_ID,
+                            conversationId
+                    ))
+                    .call()
+                    .content();
 
-        return new HandlerResult(answer);
+            return new HandlerResult(answer);
+        } catch (Exception e) {
+            LOGGER.error("GSkillHandler处理失败", e);
+            return new HandlerResult("通用技能执行失败：" + e.getMessage(), List.of(), true);
+        }
     }
 }

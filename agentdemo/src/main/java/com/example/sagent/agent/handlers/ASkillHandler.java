@@ -6,6 +6,8 @@ import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.skills.ASkill;
 import com.example.sagent.agent.skills.ApprovalContext;
 import com.example.sagent.agent.approval.UserIdResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -17,6 +19,8 @@ import java.util.List;
 
 @Component
 public class ASkillHandler implements AgentHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ASkillHandler.class);
 
     private static final String SYSTEM_PROMPT = """
             你是审批技能执行助手。
@@ -70,6 +74,9 @@ public class ASkillHandler implements AgentHandler {
                     .content();
 
             return new HandlerResult(answer);
+        } catch (Exception e) {
+            LOGGER.error("ASkillHandler处理失败", e);
+            return new HandlerResult("审批技能执行失败：" + e.getMessage(), List.of(), true);
         } finally {
             ApprovalContext.clear();
         }
