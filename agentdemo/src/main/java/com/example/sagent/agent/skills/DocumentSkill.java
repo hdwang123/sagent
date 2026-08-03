@@ -1,5 +1,6 @@
 package com.example.sagent.agent.skills;
 
+import com.example.sagent.agent.storage.DownloadStorage;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -8,11 +9,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * 文档生成技能
- * 提供生成、读取Markdown文档的能力，文档保存到output目录，可通过 /files/download/ 下载
+ * 提供生成、读取Markdown文档的能力，文档保存到下载目录，可通过 /files/download/ 下载
  */
 @Component
 public class DocumentSkill implements Skill {
@@ -20,11 +20,14 @@ public class DocumentSkill implements Skill {
     private static final String NAME = "document";
     private static final String DESCRIPTION = "生成Markdown文档、读取文档内容、生成文本文件";
 
-    private static final String OUTPUT_DIR = System.getProperty("java.io.tmpdir") + "/sagent-downloads";
-    private static final String DOWNLOAD_BASE_URL = "/files/download/";
-
     /** 读取文档内容的最大字符数，防止超长文本撑爆上下文 */
     private static final int MAX_READ_CHARS = 8000;
+
+    private final DownloadStorage downloadStorage;
+
+    public DocumentSkill(DownloadStorage downloadStorage) {
+        this.downloadStorage = downloadStorage;
+    }
 
     @Override
     public String getName() {
@@ -47,12 +50,12 @@ public class DocumentSkill implements Skill {
     }
 
     private Path getValidatedOutputDir() {
-        Path basePath = Paths.get(OUTPUT_DIR);
+        Path basePath = downloadStorage.getDownloadDir();
         if (!Files.exists(basePath)) {
             try {
                 Files.createDirectories(basePath);
             } catch (IOException e) {
-                throw new RuntimeException("创建output目录失败: " + e.getMessage(), e);
+                throw new RuntimeException("创建下载目录失败: " + e.getMessage(), e);
             }
         }
         return basePath;
@@ -94,7 +97,7 @@ public class DocumentSkill implements Skill {
                 "标题: %s\n" +
                 "文件名: %s.md\n" +
                 "下载链接: %s",
-                title, safeFileName, DOWNLOAD_BASE_URL + safeFileName + ".md");
+                title, safeFileName, downloadStorage.getDownloadBaseUrl() + safeFileName + ".md");
     }
 
     /**

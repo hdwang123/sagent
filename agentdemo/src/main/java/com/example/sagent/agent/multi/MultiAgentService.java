@@ -1,6 +1,7 @@
 package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.core.HandlerRegistry;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
@@ -11,7 +12,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,12 +44,16 @@ public class MultiAgentService {
             拆解规则：
             1. 只拆解需要多个不同能力的复杂任务；简单任务只返回1个子任务
             2. 每个子任务的goal必须自包含、可独立执行，写明具体目标和参数（如"查询产品ABC的价格"）
-            3. 如果子任务B需要子任务A的结果（例如生成文档需要先查询数据），B的dependsOn必须填A的goal原文，否则dependsOn填空字符串
+            3. dependsOn是依赖的前序子任务goal列表（数组）：如果子任务B需要子任务A的结果，B的dependsOn必须包含A的goal原文；如果B需要多个子任务的结果（如"生成文档"同时依赖RAG查询和数据库查询），dependsOn就填这两个goal组成的数组；无依赖则dependsOn填空数组[]
             4. 最多拆解4个子任务
             5. type字段必须是RAG/GSKILL/SKILL/ASKILL/MCP/CHAT之一
-            6. 示例：用户要"查询产品并生成文档"，应拆为两个子任务：
-               任务1: type=GSKILL, goal=查询所有产品的信息, dependsOn=
-               任务2: type=SKILL, goal=将查询到的所有产品信息生成一份Markdown文档并保存, dependsOn=查询所有产品的信息
+            6. 示例一（单依赖）：用户要"查询产品并生成文档"，应拆为两个子任务：
+               任务1: type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
+               任务2: type=SKILL, goal=将查询到的所有产品信息生成一份Markdown文档并保存, dependsOn=[查询所有产品的信息]
+            7. 示例二（多依赖合并）：用户要"结合知识库和产品数据生成一份报告"，应拆为三个子任务：
+               任务1: type=RAG, goal=查询Sagent项目介绍, dependsOn=[]
+               任务2: type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
+               任务3: type=SKILL, goal=结合RAG查询到的项目介绍和数据库查询到的产品信息，生成一份综合报告Markdown文档, dependsOn=[查询Sagent项目介绍, 查询所有产品的信息]
             """;
 
     private static final String AGGREGATE_PROMPT = """
@@ -62,19 +66,16 @@ public class MultiAgentService {
 
     private final ChatClient plannerClient;
     private final ChatClient aggregateClient;
-    private final Map<AgentType, AgentHandler> handlers;
+    private final HandlerRegistry handlerRegistry;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
     public MultiAgentService(
             ChatClient.Builder chatClientBuilder,
-            List<AgentHandler> handlers
+            HandlerRegistry handlerRegistry
     ) {
         this.plannerClient = chatClientBuilder.build();
         this.aggregateClient = chatClientBuilder.build();
-        this.handlers = new EnumMap<>(AgentType.class);
-        for (AgentHandler handler : handlers) {
-            this.handlers.put(handler.type(), handler);
-        }
+        this.handlerRegistry = handlerRegistry;
     }
 
     /**
@@ -121,7 +122,7 @@ public class MultiAgentService {
                 .entity(TaskPlan.class, spec -> spec.validateSchema());
         if (plan == null || plan.tasks() == null || plan.tasks().isEmpty()) {
             // 兜底：当作单个普通聊天任务
-            return new TaskPlan(List.of(new Task(AgentType.CHAT, message, "")));
+            return new TaskPlan(List.of(new Task(AgentType.CHAT, message, List.of())));
         }
         return plan;
     }
@@ -134,10 +135,10 @@ public class MultiAgentService {
         List<Task> pending = new ArrayList<>(tasks);
 
         while (!pending.isEmpty()) {
-            // 找出本轮可执行的任务（无依赖 或 依赖已完成）
+            // 找出本轮可执行的任务（无依赖 或 所有依赖已完成）
             List<Task> ready = pending.stream()
-                    .filter(t -> t.dependsOn() == null || t.dependsOn().isBlank()
-                            || results.containsKey(t.dependsOn()))
+                    .filter(t -> t.dependsOn() == null || t.dependsOn().isEmpty()
+                            || t.dependsOn().stream().allMatch(results::containsKey))
                     .toList();
             if (ready.isEmpty()) {
                 LOGGER.warn("任务依赖无法满足，剩余任务直接并行执行: {}",
@@ -163,20 +164,25 @@ public class MultiAgentService {
 
     /**
      * 执行单个子任务：复用现有Handler，使用独立会话ID避免污染主会话
-     * 若任务声明了依赖，将依赖任务的执行结果拼入goal，供子Agent参考
+     * 若任务声明了依赖，将所有依赖任务的执行结果一并拼入goal，供子Agent参考
      */
     private HandlerResult runSubAgent(String conversationId, Task task, Map<String, HandlerResult> results) {
-        AgentHandler handler = handlers.get(task.type());
+        AgentHandler handler = handlerRegistry.get(task.type());
         if (handler == null) {
             LOGGER.warn("无处理器: {}, 子任务[{}]降级为普通聊天", task.type(), task.goal());
-            return handlers.get(AgentType.CHAT).handle(conversationId, task.goal());
+            return handlerRegistry.get(AgentType.CHAT).handle(conversationId, task.goal());
         }
         String subConversationId = UUID.randomUUID().toString();
         String goal = task.goal();
-        if (task.dependsOn() != null && !task.dependsOn().isBlank()) {
-            HandlerResult depResult = results.get(task.dependsOn());
-            if (depResult != null && depResult.answer() != null && !depResult.answer().isBlank()) {
-                goal = task.goal() + "\n\n以下是依赖任务【" + task.dependsOn() + "】的执行结果，请基于此结果完成任务：\n" + depResult.answer();
+        List<String> depGoals = task.dependsOn() == null ? List.of() : task.dependsOn();
+        if (!depGoals.isEmpty()) {
+            List<String> depBlocks = depGoals.stream()
+                    .filter(results::containsKey)
+                    .map(dep -> "【依赖任务：" + dep + "】\n" + results.get(dep).answer())
+                    .toList();
+            if (!depBlocks.isEmpty()) {
+                goal = task.goal() + "\n\n以下是依赖任务的执行结果，请基于这些结果完成任务：\n"
+                        + String.join("\n\n", depBlocks);
             }
         }
         LOGGER.info("子Agent[{}, 会话{}] 执行: {}", task.type(), subConversationId, task.goal());

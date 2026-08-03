@@ -3,26 +3,35 @@ package com.example.sagent.agent.routing;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
+import com.example.sagent.agent.skills.ASkill;
+import com.example.sagent.agent.skills.GSkill;
+import com.example.sagent.agent.skills.Skill;
+import com.example.sagent.agent.skills.ToolDescriptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class MessageClassifier {
 
+    /**
+     * 分类提示词模板
+     * SKILL/GSKILL/ASKILL 三个分类的工具清单由 {skillTools}/{gskillTools}/{askillTools} 占位符动态生成，
+     * 保证与容器中实际注册的 Skill Bean 始终一致，避免人工维护描述导致与真实工具脱节
+     */
     private static final String CLASSIFICATION_PROMPT_TEMPLATE = """
             你是专业的消息分类器，必须严格按照以下规则分类：
 
             === 各分类对应的工具功能 ===
 
             【SKILL】组合技能工具（单次调用）
-            - WebPageDownloadSkill: 下载网页中所有图片/视频/音频/文档/HTML内容、网页截图（解析HTML提取img/video/audio/a标签→下载到文件夹→可选压缩）
-            - DocumentSkill: 生成Markdown文档、读取已生成文档内容、生成文本文件
-            - compressFiles: 压缩多个文件为ZIP包
+            {skillTools}
             场景：下载网页图片、下载网页视频、下载网页音频、下载网页文档、下载网页内容、保存网页HTML、网页截图、压缩文件、生成Markdown文档、保存文件、文档操作等需要调用工具的任务，仅调用一个工具
 
             【GSKILL】通用技能工具（循环调用）
-            - DataBaseSkill: listProducts()查询全部产品、findProductsByName()按名称模糊查询、findProductsByMaxPrice()按最高价格查询、findProductById()按ID精确查询、countProducts()统计产品总数
-            - AlarmSkill: getCurrentDateTime()获取当前时间、setAlarm()设置闹钟
+            {gskillTools}
             场景：产品查询、价格、库存、数量、统计等业务数据查询，查询时间、设置闹钟等，支持工具组合调用
 
             【RAG】知识库检索工具
@@ -38,7 +47,7 @@ public class MessageClassifier {
             场景：数学计算、天气查询、股票查询、系统信息获取、外部API调用等
 
             【ASKILL】审批技能工具（需要人工审批）
-            - ApprovalSqlSkill: deleteProduct(id)删除产品、updateProductPrice(id,newPrice)修改价格、updateProductStock(id,newStock)修改库存、getMyApprovals()查询审批列表、checkApprovalById(id)查询审批详情
+            {askillTools}
             场景：删除产品、修改产品价格、修改产品库存等敏感数据库操作；查询审批记录、审批状态、审批列表等审批管理操作，每次敏感操作先提交审批，人工审核通过后自动执行
 
             【CHAT】普通聊天
@@ -58,13 +67,22 @@ public class MessageClassifier {
 
     private final ChatClient chatClient;
     private final ConversationHistory conversationHistory;
+    private final List<Skill> skills;
+    private final List<GSkill> gSkills;
+    private final List<ASkill> aSkills;
 
     public MessageClassifier(
             ChatClient.Builder chatClientBuilder,
-            ConversationHistory conversationHistory
+            ConversationHistory conversationHistory,
+            List<Skill> skills,
+            List<GSkill> gSkills,
+            List<ASkill> aSkills
     ) {
         this.chatClient = chatClientBuilder.build();
         this.conversationHistory = conversationHistory;
+        this.skills = skills;
+        this.gSkills = gSkills;
+        this.aSkills = aSkills;
     }
 
     public RouteDecision classify(String conversationId, String message) {
@@ -81,7 +99,7 @@ public class MessageClassifier {
                     """.formatted(history, message);
 
             RouteDecision decision = chatClient.prompt()
-                    .system(CLASSIFICATION_PROMPT_TEMPLATE)
+                    .system(buildClassificationPrompt())
                     .user(classificationInput)
                     .call()
                     .entity(RouteDecision.class, spec -> spec.validateSchema());
@@ -94,6 +112,28 @@ public class MessageClassifier {
         } catch (RuntimeException exception) {
             return fallbackDecision();
         }
+    }
+
+    /**
+     * 构建分类提示词：用容器中实际注册的技能 Bean 动态填充工具清单
+     */
+    private String buildClassificationPrompt() {
+        return CLASSIFICATION_PROMPT_TEMPLATE
+                .replace("{skillTools}", formatToolList(skills))
+                .replace("{gskillTools}", formatToolList(gSkills))
+                .replace("{askillTools}", formatToolList(aSkills));
+    }
+
+    /**
+     * 将技能列表格式化为 "名称: 描述" 的工具清单行
+     */
+    private String formatToolList(List<? extends ToolDescriptor> toolList) {
+        if (toolList == null || toolList.isEmpty()) {
+            return "（无）";
+        }
+        return toolList.stream()
+                .map(tool -> "- " + tool.getName() + ": " + tool.getDescription())
+                .collect(Collectors.joining("\n"));
     }
 
     private RouteDecision fallbackDecision() {

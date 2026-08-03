@@ -1,5 +1,6 @@
 package com.example.sagent.agent.skills;
 
+import com.example.sagent.agent.storage.DownloadStorage;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -31,9 +32,13 @@ public class WebPageDownloadSkill implements Skill {
     private static final String NAME = "webPageDownload";
     private static final String DESCRIPTION = "下载网页内容、图片、视频、音频、文档，截取网页截图，文件压缩打包";
 
-    private static final String OUTPUT_DIR = System.getProperty("java.io.tmpdir") + "/sagent-downloads";
-    private static final String DOWNLOAD_BASE_URL = "/files/download/";
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
+
+    private final DownloadStorage downloadStorage;
+
+    public WebPageDownloadSkill(DownloadStorage downloadStorage) {
+        this.downloadStorage = downloadStorage;
+    }
 
     @Override
     public String getName() {
@@ -56,7 +61,7 @@ public class WebPageDownloadSkill implements Skill {
 
     private Path getValidatedFolderPath(String folderName) {
         validateFolderName(folderName);
-        Path basePath = Paths.get(OUTPUT_DIR);
+        Path basePath = downloadStorage.getDownloadDir();
         if (!Files.exists(basePath)) {
             try {
                 Files.createDirectories(basePath);
@@ -96,7 +101,7 @@ public class WebPageDownloadSkill implements Skill {
 
         if (compress) {
             compressFiles(folderName, folderName + "_images");
-            return result + "\n\n图片已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_images.zip";
+            return result + "\n\n图片已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_images.zip";
         }
 
         return result;
@@ -113,7 +118,7 @@ public class WebPageDownloadSkill implements Skill {
 
         if (compress) {
             compressFiles(folderName, folderName + "_videos");
-            return result + "\n\n视频已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_videos.zip";
+            return result + "\n\n视频已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_videos.zip";
         }
 
         return result;
@@ -130,7 +135,7 @@ public class WebPageDownloadSkill implements Skill {
 
         if (compress) {
             compressFiles(folderName, folderName + "_audios");
-            return result + "\n\n音频已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_audios.zip";
+            return result + "\n\n音频已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_audios.zip";
         }
 
         return result;
@@ -147,7 +152,7 @@ public class WebPageDownloadSkill implements Skill {
 
         if (compress) {
             compressFiles(folderName, folderName + "_documents");
-            return result + "\n\n文档已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_documents.zip";
+            return result + "\n\n文档已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_documents.zip";
         }
 
         return result;
@@ -189,12 +194,12 @@ public class WebPageDownloadSkill implements Skill {
                     "- %s: %s\n" +
                     "- %s: %s",
                     pageTitle, dynamic ? "动态渲染(浏览器)" : "静态抓取(HTTP)",
-                    htmlFileName, DOWNLOAD_BASE_URL + folderName + "/" + htmlFileName,
-                    mdFileName, DOWNLOAD_BASE_URL + folderName + "/" + mdFileName);
+                    htmlFileName, downloadStorage.getDownloadBaseUrl() + folderName + "/" + htmlFileName,
+                    mdFileName, downloadStorage.getDownloadBaseUrl() + folderName + "/" + mdFileName);
 
             if (compress) {
                 compressFiles(folderName, folderName + "_content");
-                return result + "\n\n文件已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_content.zip";
+                return result + "\n\n文件已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_content.zip";
             }
 
             return result;
@@ -237,11 +242,11 @@ public class WebPageDownloadSkill implements Skill {
                         .setType(com.microsoft.playwright.options.ScreenshotType.PNG));
 
                 String result = String.format("网页：%s\n网站：%s\n\n截图：%s",
-                        pageTitle, url, DOWNLOAD_BASE_URL + folderName + "/" + fileName);
+                        pageTitle, url, downloadStorage.getDownloadBaseUrl() + folderName + "/" + fileName);
 
                 if (compress) {
                     compressFiles(folderName, folderName + "_screenshot");
-                    return result + "\n\n截图已压缩，下载链接: " + DOWNLOAD_BASE_URL + folderName + "_screenshot.zip";
+                    return result + "\n\n截图已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_screenshot.zip";
                 }
 
                 return result;
@@ -259,10 +264,10 @@ public class WebPageDownloadSkill implements Skill {
         validateFolderName(sourceFolderName);
         validateFolderName(zipFileName);
 
-        Path sourcePath = Paths.get(OUTPUT_DIR).resolve(sourceFolderName).normalize();
-        Path zipPath = Paths.get(OUTPUT_DIR).resolve(zipFileName + ".zip").normalize();
+        Path sourcePath = downloadStorage.getDownloadDir().resolve(sourceFolderName).normalize();
+        Path zipPath = downloadStorage.getDownloadDir().resolve(zipFileName + ".zip").normalize();
 
-        if (!sourcePath.startsWith(Paths.get(OUTPUT_DIR))) {
+        if (!sourcePath.startsWith(downloadStorage.getDownloadDir())) {
             throw new IllegalArgumentException("不允许访问output目录外的路径");
         }
 
@@ -289,7 +294,7 @@ public class WebPageDownloadSkill implements Skill {
                     "源文件夹: %s\n" +
                     "压缩文件: %s\n" +
                     "下载链接: %s",
-                    sourceFolderName, zipFileName + ".zip", DOWNLOAD_BASE_URL + zipFileName + ".zip");
+                    sourceFolderName, zipFileName + ".zip", downloadStorage.getDownloadBaseUrl() + zipFileName + ".zip");
         } catch (IOException e) {
             throw new RuntimeException("创建压缩文件失败: " + e.getMessage(), e);
         }
@@ -461,7 +466,7 @@ public class WebPageDownloadSkill implements Skill {
             if (successCount > 0) {
                 result += "下载链接:\n";
                 for (String f : downloadedFiles) {
-                    result += "- " + f + ": " + DOWNLOAD_BASE_URL + folderName + "/" + f + ";";
+                    result += "- " + f + ": " + downloadStorage.getDownloadBaseUrl() + folderName + "/" + f + ";";
                 }
             }
 
@@ -685,7 +690,7 @@ public class WebPageDownloadSkill implements Skill {
     @Tool(description = "列出output目录下的所有文件，返回output目录中所有文件名称列表（包含子目录）")
     public List<String> listOutputFiles() {
         try {
-            Path outputPath = Paths.get(OUTPUT_DIR);
+            Path outputPath = downloadStorage.getDownloadDir();
             if (!Files.exists(outputPath)) {
                 return List.of("output目录不存在");
             }

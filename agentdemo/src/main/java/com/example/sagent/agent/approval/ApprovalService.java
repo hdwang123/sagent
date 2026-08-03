@@ -3,63 +3,52 @@ package com.example.sagent.agent.approval;
 import com.example.sagent.agent.model.ApprovalRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
+/**
+ * 审批服务
+ * 负责审批记录的业务流程：创建、查询、审批通过/拒绝
+ * 数据访问委托给 ApprovalRepository
+ */
 @Service
 public class ApprovalService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ApprovalService.class);
 
-    private static final String COLS = "id, user_id, tool_name, args_json, status, result, create_time";
-    private static final String TABLE = "approval_records";
+    private final ApprovalRepository approvalRepository;
 
-    private final JdbcClient jdbcClient;
-
-    public ApprovalService(JdbcClient jdbcClient) {
-        this.jdbcClient = jdbcClient;
+    public ApprovalService(ApprovalRepository approvalRepository) {
+        this.approvalRepository = approvalRepository;
     }
 
     public ApprovalRecord createPending(String userId, String toolName, String argsJson) {
-        String id = UUID.randomUUID().toString();
-        var now = LocalDateTime.now();
-        jdbcClient.sql("insert into %s (id, user_id, tool_name, args_json, status, create_time) values (?, ?, ?, ?, 'PENDING', ?)".formatted(TABLE))
-                .param(id).param(userId).param(toolName).param(argsJson).param(now).update();
-        LOGGER.info("create PENDING #{}: {} {} (user={})", id, toolName, argsJson, userId);
-        return new ApprovalRecord(id, userId, toolName, argsJson, "PENDING", null, null, now, null);
+        ApprovalRecord record = approvalRepository.createPending(userId, toolName, argsJson);
+        LOGGER.info("create PENDING #{}: {} {} (user={})", record.id(), toolName, argsJson, userId);
+        return record;
     }
 
     public Optional<ApprovalRecord> findExisting(String userId, String toolName, String argsJson) {
-        return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? and status = 'PENDING' order by create_time desc limit 1".formatted(COLS, TABLE))
-                .param(userId).param(toolName).param(argsJson)
-                .query(this::mapRecord).optional();
+        return approvalRepository.findExisting(userId, toolName, argsJson);
     }
 
     public List<ApprovalRecord> listAll() {
-        var records = jdbcClient.sql("select %s from %s order by create_time desc".formatted(COLS, TABLE))
-                .query(this::mapRecord).list();
+        var records = approvalRepository.listAll();
         LOGGER.info("listAll: found {} records", records.size());
         return records;
     }
 
     public List<ApprovalRecord> listPending() {
-        var records = jdbcClient.sql("select %s from %s where status = 'PENDING' order by create_time desc".formatted(COLS, TABLE))
-                .query(this::mapRecord).list();
+        var records = approvalRepository.listPending();
         LOGGER.info("listPending: found {} PENDING records", records.size());
         return records;
     }
 
     public ApprovalRecord getRecord(String id) {
-        return jdbcClient.sql("select %s from %s where id = ?".formatted(COLS, TABLE))
-                .param(id).query(this::mapRecord)
-                .optional().orElseThrow(() -> new IllegalArgumentException("approval not found: " + id));
+        return approvalRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("approval not found: " + id));
     }
 
     public void approve(String id, String executionResult) {
@@ -67,8 +56,7 @@ public class ApprovalService {
         if (!"PENDING".equals(record.status())) {
             throw new IllegalStateException("status is not PENDING: " + record.status());
         }
-        jdbcClient.sql("update %s set status = 'APPROVED', result = ? where id = ?".formatted(TABLE))
-                .param(executionResult).param(id).update();
+        approvalRepository.updateStatus(id, "APPROVED", executionResult);
         LOGGER.info("approve #{}: {}", id, executionResult);
     }
 
@@ -77,30 +65,11 @@ public class ApprovalService {
         if (!"PENDING".equals(record.status())) {
             throw new IllegalStateException("status is not PENDING: " + record.status());
         }
-        jdbcClient.sql("update %s set status = 'REJECTED', result = 'rejected' where id = ?".formatted(TABLE))
-                .param(id).update();
+        approvalRepository.updateStatus(id, "REJECTED", "rejected");
         LOGGER.info("reject #{}", id);
     }
 
     public Optional<String> getApprovedResult(String userId, String toolName, String argsJson) {
-        return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? and status = 'APPROVED' order by create_time desc limit 1".formatted(COLS, TABLE))
-                .param(userId).param(toolName).param(argsJson)
-                .query(this::mapRecord)
-                .optional()
-                .map(ApprovalRecord::result);
-    }
-
-    private ApprovalRecord mapRecord(ResultSet rs, int rowNum) throws SQLException {
-        return new ApprovalRecord(
-                rs.getString("id"),
-                rs.getString("user_id"),
-                rs.getString("tool_name"),
-                rs.getString("args_json"),
-                rs.getString("status"),
-                rs.getString("result"),
-                null,
-                rs.getTimestamp("create_time") != null ? rs.getTimestamp("create_time").toLocalDateTime() : null,
-                null
-        );
+        return approvalRepository.getApprovedResult(userId, toolName, argsJson);
     }
 }

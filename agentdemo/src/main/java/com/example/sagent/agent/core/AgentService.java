@@ -5,11 +5,9 @@ import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.RouteDecision;
 import com.example.sagent.agent.routing.MessageClassifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Agent服务类
@@ -18,21 +16,20 @@ import java.util.Map;
 @Service
 public class AgentService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentService.class);
+
     private final MessageClassifier classifier;
-    private final Map<AgentType, AgentHandler> handlers;
+    private final HandlerRegistry handlerRegistry;
 
     /**
      * 构造函数
      *
-     * @param classifier 消息分类器
-     * @param handlers   处理器列表
+     * @param classifier      消息分类器
+     * @param handlerRegistry 处理器注册表
      */
-    public AgentService(MessageClassifier classifier, List<AgentHandler> handlers) {
+    public AgentService(MessageClassifier classifier, HandlerRegistry handlerRegistry) {
         this.classifier = classifier;
-        this.handlers = new EnumMap<>(AgentType.class);
-        for (AgentHandler handler : handlers) {
-            this.handlers.put(handler.type(), handler);
-        }
+        this.handlerRegistry = handlerRegistry;
     }
 
     /**
@@ -45,9 +42,21 @@ public class AgentService {
      */
     public AgentResponse ask(String conversationId, String message) {
         RouteDecision decision = classifier.classify(conversationId, message);
-        AgentHandler handler = handlers.get(decision.type());
+        AgentHandler handler = handlerRegistry.getOrDefault(decision.type(), handlerRegistry.get(AgentType.CHAT));
         if (handler == null) {
-            throw new IllegalStateException("No handler registered for " + decision.type());
+            // 极端情况：分类器返回了未注册类型且CHAT也未注册，直接返回错误而非抛500
+            LOGGER.error("未注册任何处理器，type={}", decision.type());
+            return new AgentResponse(
+                    conversationId,
+                    "系统暂无可用的处理器，请稍后再试",
+                    decision.type(),
+                    decision.reason(),
+                    java.util.List.of(),
+                    true
+            );
+        }
+        if (handler.type() != decision.type()) {
+            LOGGER.warn("未注册处理器[{}]，降级为普通聊天", decision.type());
         }
         HandlerResult result = handler.handle(conversationId, message);
         return new AgentResponse(
@@ -55,7 +64,8 @@ public class AgentService {
                 result.answer(),
                 decision.type(),
                 decision.reason(),
-                result.sources()
+                result.sources(),
+                result.error()
         );
     }
 

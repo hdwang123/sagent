@@ -174,18 +174,20 @@ public class RagHandler implements AgentHandler {
             // 解析LLM返回的分数
             List<Integer> scores = parseScores(response, candidates.size());
 
-            // 按分数重排序
-            List<VectorKnowledgeRetriever.KnowledgeHit> ranked = new ArrayList<>(candidates);
-            ranked.sort((a, b) -> {
-                int idxA = candidates.indexOf(a);
-                int idxB = candidates.indexOf(b);
-                return Integer.compare(
-                        idxB < scores.size() ? scores.get(idxB) : 0,
-                        idxA < scores.size() ? scores.get(idxA) : 0
-                );
-            });
+            // 按分数重排序：以索引排序，避免 indexOf 在重复对象上取错位置
+            List<Integer> order = new ArrayList<>();
+            for (int i = 0; i < candidates.size(); i++) {
+                order.add(i);
+            }
+            order.sort((a, b) -> Integer.compare(
+                    b < scores.size() ? scores.get(b) : 0,
+                    a < scores.size() ? scores.get(a) : 0
+            ));
 
-            return ranked.stream().limit(topK).toList();
+            return order.stream()
+                    .limit(topK)
+                    .map(candidates::get)
+                    .toList();
         } catch (Exception e) {
             LOGGER.warn("LLM重排序失败，使用原始混合检索结果: {}", e.getMessage());
             return candidates.stream().limit(topK).toList();

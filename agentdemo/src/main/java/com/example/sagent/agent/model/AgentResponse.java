@@ -26,7 +26,11 @@ public record AgentResponse(
         /**
          * 来源列表（如知识库文档名）
          */
-        List<String> sources
+        List<String> sources,
+        /**
+         * 是否执行失败
+         */
+        boolean error
 ) {
 
     /**

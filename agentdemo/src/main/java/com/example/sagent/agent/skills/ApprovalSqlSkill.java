@@ -1,6 +1,7 @@
 package com.example.sagent.agent.skills;
 
 import com.example.sagent.agent.approval.Approval;
+import com.example.sagent.agent.approval.ApprovalRepository;
 import com.example.sagent.agent.model.ApprovalRecord;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -16,12 +17,12 @@ import java.util.List;
 @Component
 public class ApprovalSqlSkill implements ASkill {
 
-    private static final String COLS = "id, user_id, tool_name, args_json, status, result, create_time";
-
     private final JdbcClient jdbcClient;
+    private final ApprovalRepository approvalRepository;
 
-    public ApprovalSqlSkill(JdbcClient jdbcClient) {
+    public ApprovalSqlSkill(JdbcClient jdbcClient, ApprovalRepository approvalRepository) {
         this.jdbcClient = jdbcClient;
+        this.approvalRepository = approvalRepository;
     }
 
     @Override
@@ -36,22 +37,12 @@ public class ApprovalSqlSkill implements ASkill {
 
     @Tool(description = "查询所有审批记录的详细状态")
     public String getMyApprovals() {
-        List<ApprovalRecord> records = jdbcClient.sql(
-                "select %s from approval_records order by create_time desc"
-                        .formatted(COLS))
-                .query(this::mapRecord)
-                .list();
+        List<ApprovalRecord> records = approvalRepository.listAll();
         if (records.isEmpty()) return "当前无审批记录";
         StringBuilder sb = new StringBuilder();
         for (ApprovalRecord r : records) {
-            String s = switch (r.status()) {
-                case "PENDING" -> "待审批";
-                case "APPROVED" -> "已通过";
-                case "REJECTED" -> "已拒绝";
-                default -> r.status();
-            };
             sb.append("#").append(r.id())
-                    .append(" 操作:").append(r.toolName()).append(" 状态:").append(s)
+                    .append(" 操作:").append(r.toolName()).append(" 状态:").append(statusText(r.status()))
                     .append(" 结果:").append(r.result() != null ? r.result() : "未执行")
                     .append("\n");
         }
@@ -63,24 +54,22 @@ public class ApprovalSqlSkill implements ASkill {
             @ToolParam(description = "审批编号") String id
     ) {
         try {
-            return jdbcClient.sql("select %s from approval_records where id = :id".formatted(COLS))
-                    .param("id", id)
-                    .query(this::mapRecord)
-                    .optional()
-                    .map(r -> {
-                        String s = switch (r.status()) {
-                            case "PENDING" -> "待审批";
-                            case "APPROVED" -> "已通过";
-                            case "REJECTED" -> "已拒绝";
-                            default -> r.status();
-                        };
-                        return "#%d 操作:%s 状态:%s 结果:%s".formatted(r.id(), r.toolName(), s,
-                                r.result() != null ? r.result() : "未执行");
-                    })
+            return approvalRepository.findById(id)
+                    .map(r -> "#%s 操作:%s 状态:%s 结果:%s".formatted(r.id(), r.toolName(), statusText(r.status()),
+                            r.result() != null ? r.result() : "未执行"))
                     .orElse("审批记录 #" + id + " 不存在");
         } catch (Exception e) {
             return "查询失败: " + e.getMessage();
         }
+    }
+
+    private String statusText(String status) {
+        return switch (status) {
+            case "PENDING" -> "待审批";
+            case "APPROVED" -> "已通过";
+            case "REJECTED" -> "已拒绝";
+            default -> status;
+        };
     }
 
     // ===== 写入方法（加 @Approval(enable=true) 触发审批拦截） =====
@@ -117,19 +106,5 @@ public class ApprovalSqlSkill implements ASkill {
         int rows = jdbcClient.sql("update products set stock = :stock where id = :id")
                 .param("id", id).param("stock", newStock).update();
         return "已修改产品库存（ID: %d -> %d），共更新 %d 条记录".formatted(id, newStock, rows);
-    }
-
-    private ApprovalRecord mapRecord(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
-        return new ApprovalRecord(
-                rs.getString("id"),
-                rs.getString("user_id"),
-                rs.getString("tool_name"),
-                rs.getString("args_json"),
-                rs.getString("status"),
-                rs.getString("result"),
-                null,
-                rs.getTimestamp("create_time") != null ? rs.getTimestamp("create_time").toLocalDateTime() : null,
-                rs.getTimestamp("update_time") != null ? rs.getTimestamp("update_time").toLocalDateTime() : null
-        );
     }
 }

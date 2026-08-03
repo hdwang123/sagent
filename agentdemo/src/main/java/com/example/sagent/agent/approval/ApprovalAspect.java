@@ -2,6 +2,8 @@ package com.example.sagent.agent.approval;
 
 import com.example.sagent.agent.model.ApprovalRecord;
 import com.example.sagent.agent.skills.ApprovalContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -20,10 +22,12 @@ public class ApprovalAspect {
 
     private final ApprovalService approvalService;
     private final UserIdResolver userIdResolver;
+    private final ObjectMapper objectMapper;
 
-    public ApprovalAspect(ApprovalService approvalService, UserIdResolver userIdResolver) {
+    public ApprovalAspect(ApprovalService approvalService, UserIdResolver userIdResolver, ObjectMapper objectMapper) {
         this.approvalService = approvalService;
         this.userIdResolver = userIdResolver;
+        this.objectMapper = objectMapper;
     }
 
     @Around("execution(* com.example.sagent.agent.skills.ASkill+.*(..)) && @annotation(approval)")
@@ -62,18 +66,14 @@ public class ApprovalAspect {
     }
 
     private String buildArgsJson(String methodName, String[] paramNames, Object[] args) {
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
+        ObjectNode node = objectMapper.createObjectNode();
         if (paramNames != null) {
             for (int i = 0; i < Math.min(paramNames.length, args.length); i++) {
+                // 跳过编译期默认参数名（未开启 -parameters 时可能为 arg0/arg1）
                 if (paramNames[i].startsWith("arg")) continue;
-                if (!first) sb.append(",");
-                sb.append("\"").append(paramNames[i]).append("\":\"")
-                        .append(args[i] != null ? args[i].toString() : "null").append("\"");
-                if (first) first = false;
+                node.put(paramNames[i], args[i] != null ? String.valueOf(args[i]) : "");
             }
         }
-        sb.append("}");
-        return sb.toString();
+        return node.toString();
     }
 }

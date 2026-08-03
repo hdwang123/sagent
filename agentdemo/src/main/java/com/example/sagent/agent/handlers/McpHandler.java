@@ -5,6 +5,8 @@ import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -23,6 +25,8 @@ import java.util.List;
  */
 @Component
 public class McpHandler implements AgentHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(McpHandler.class);
 
     private static final String SYSTEM_PROMPT = """
             你是MCP工具执行助手，可以调用MCP服务器提供的工具完成任务。
@@ -83,7 +87,8 @@ public class McpHandler implements AgentHandler {
                     .content();
             return new HandlerResult(answer);
         } catch (Exception e) {
-            return new HandlerResult("MCP服务连接失败: " + e.getMessage());
+            LOGGER.warn("MCP调用失败: {}", e.getMessage());
+            return new HandlerResult("MCP服务连接失败: " + e.getMessage(), List.of(), true);
         }
     }
 }
