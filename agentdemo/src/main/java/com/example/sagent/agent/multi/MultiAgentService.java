@@ -168,20 +168,7 @@ public class MultiAgentService {
 
             // 本轮并行执行：每个子任务加超时与异常兜底，避免单个任务卡死/抛错中断整轮
             List<CompletableFuture<Map.Entry<String, HandlerResult>>> futures = ready.stream()
-                    .map(task -> CompletableFuture.supplyAsync(
-                            () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, taskById)),
-                            executor)
-                            .orTimeout(SUB_AGENT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                            .exceptionally(ex -> {
-                                Throwable root = (ex instanceof CompletionException && ex.getCause() != null)
-                                        ? ex.getCause() : ex;
-                                String msg = root instanceof TimeoutException
-                                        ? "子任务执行超时（>" + SUB_AGENT_TIMEOUT_SECONDS + "s）"
-                                        : "子任务执行失败：" + root.getMessage();
-                                LOGGER.error("子Agent[{}] {}", task.type(), msg, root);
-                                return Map.entry(task.id(), new HandlerResult(
-                                        "子任务[" + task.goal() + "]" + msg, List.of(), true));
-                            }))
+                    .map(task -> scheduleTask(conversationId, task, results, taskById))
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             futures.forEach(f -> {
@@ -193,10 +180,40 @@ public class MultiAgentService {
     }
 
     /**
+     * 异步调度单个子任务，附带超时与异常兜底。
+     * 超时或异常时降级为错误结果（{@link HandlerResult#error()}=true），不向上抛，
+     * 保证整轮编排不被单个任务卡死或拖垮。
+     *
+     * @param conversationId 主会话ID
+     * @param task           待执行子任务
+     * @param results        已完成子任务结果（key为子任务id），用于依赖注入
+     * @param taskById       id -> Task 映射，用于按依赖id查goal描述
+     * @return 以子任务id为key、执行结果为value的异步Entry
+     */
+    private CompletableFuture<Map.Entry<String, HandlerResult>> scheduleTask(
+            String conversationId, Task task,
+            Map<String, HandlerResult> results, Map<String, Task> taskById) {
+        return CompletableFuture.supplyAsync(
+                        () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, taskById)),
+                        executor)
+                .orTimeout(SUB_AGENT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .exceptionally(ex -> {
+                    Throwable root = (ex instanceof CompletionException && ex.getCause() != null)
+                            ? ex.getCause() : ex;
+                    String msg = root instanceof TimeoutException
+                            ? "子任务执行超时（>" + SUB_AGENT_TIMEOUT_SECONDS + "s）"
+                            : "子任务执行失败：" + root.getMessage();
+                    LOGGER.error("子Agent[{}] {}", task.type(), msg, root);
+                    return Map.entry(task.id(), new HandlerResult(
+                            "子任务[" + task.goal() + "]" + msg, List.of(), true));
+                });
+    }
+
+    /**
      * 执行单个子任务：复用现有Handler，使用独立会话ID避免污染主会话。
      * 若任务声明了依赖，将所有依赖任务的执行结果一并拼入goal，供子Agent参考。
      * 整个方法体被 try-catch 包裹：任何异常都降级为错误结果返回，不向上抛出，
-     * 避免单个子任务拖垮整轮编排（与 execute 中的超时兜底形成双重防护）。
+     * 避免单个子任务拖垮整轮编排（与 scheduleTask 中的超时兜底形成双重防护）。
      *
      * @param conversationId 主会话ID（仅用于降级聊天场景）
      * @param task           待执行的子任务
