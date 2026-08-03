@@ -9,6 +9,7 @@ import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -120,10 +121,8 @@ public class MultiAgentService {
      * @return 最终回答
      */
     public HandlerResult handle(String conversationId, String message) {
-        // 1. Planner拆解任务
+        // 1. Planner拆解任务（计划详情由 plan() 内部输出日志）
         TaskPlan plan = plan(message);
-        LOGGER.info("Planner拆解出 {} 个子任务: {}", plan.tasks().size(),
-                plan.tasks().stream().map(Task::goal).toList());
 
         // id -> Task 映射，供 execute/aggregate 按id查goal描述
         Map<String, Task> taskById = plan.tasks().stream()
@@ -156,14 +155,30 @@ public class MultiAgentService {
         TaskPlan plan = plannerClient.prompt()
                 .system(PLANNER_PROMPT)
                 .user(message)
+                .advisors(new SimpleLoggerAdvisor())
                 .call()
                 .entity(TaskPlan.class, spec -> spec.validateSchema());
         if (plan == null || plan.tasks() == null || plan.tasks().isEmpty()) {
             // 兜底：当作单个普通聊天任务
+            LOGGER.warn("Planner返回空计划，降级为单个聊天任务: {}", message);
             return new TaskPlan(List.of(new Task("t1", AgentType.CHAT, message, List.of())));
         }
         // id 与 dependsOn 必须由 LLM 协同生成才能匹配，代码侧补 id 与 LLM 在 dependsOn 里的引用对不上，故不做兜底
+        logPlan("Planner拆解", plan.tasks());
         return plan;
+    }
+
+    /**
+     * 输出任务计划日志：每个子任务的 id/type/goal/dependsOn，便于调试观察 Planner 输出。
+     *
+     * @param title 日志标题（如 Planner拆解、重新规划）
+     * @param tasks 子任务列表
+     */
+    private void logPlan(String title, List<Task> tasks) {
+        LOGGER.info("{}: {} 个子任务", title, tasks.size());
+        for (Task t : tasks) {
+            LOGGER.info("  [{}] type={}, goal={}, dependsOn={}", t.id(), t.type(), t.goal(), t.dependsOn());
+        }
     }
 
     /**
@@ -180,8 +195,12 @@ public class MultiAgentService {
         Map<String, HandlerResult> results = new LinkedHashMap<>();
         List<Task> pending = new ArrayList<>(tasks);
         int replanCount = 0;
+        int wave = 0;
+        LOGGER.info("Executor启动: 共{}个子任务待执行", tasks.size());
 
         while (!pending.isEmpty()) {
+            wave++;
+            LOGGER.info("===== 波次{}开始: pending={}个 =====", wave, pending.size());
             // 找出本轮可执行的任务（无依赖 或 所有依赖已完成）
             List<Task> ready = pending.stream()
                     .filter(t -> t.dependsOn() == null || t.dependsOn().isEmpty()
@@ -197,6 +216,7 @@ public class MultiAgentService {
                         "因依赖无法满足而跳过（循环依赖或依赖id不存在）");
                 break;
             }
+            LOGGER.info("波次{}就绪任务: {}", wave, ready.stream().map(Task::id).toList());
             pending.removeAll(ready);
 
             // 本轮并行执行：每个子任务加超时与异常兜底，避免单个任务卡死/抛错中断整轮
@@ -208,6 +228,9 @@ public class MultiAgentService {
                 var entry = f.join();
                 results.put(entry.getKey(), entry.getValue());
             });
+            long successCount = ready.stream().filter(t -> !results.get(t.id()).error()).count();
+            long failCount = ready.size() - successCount;
+            LOGGER.info("波次{}执行完成: 成功{}个, 失败{}个", wave, successCount, failCount);
 
             // 纠偏：检查失败任务，尝试重新规划或止损
             if (!pending.isEmpty()) {
@@ -227,6 +250,7 @@ public class MultiAgentService {
                         for (Task t : newTasks) {
                             taskById.put(t.id(), t);
                         }
+                        LOGGER.info("重新规划完成: 新增{}个任务, 剩余pending={}个", newTasks.size(), pending.size());
                         continue;
                     }
                     // 方案E：重新规划次数用完，依赖失败任务的后续任务注定无意义，止损跳过
@@ -249,9 +273,12 @@ public class MultiAgentService {
                     markFailed(results, taskById, toFail,
                             "因依赖任务失败而止损跳过");
                     pending.removeIf(t -> toFail.contains(t.id()));
+                    LOGGER.info("止损完成: 跳过{}个依赖失败链任务, 剩余pending={}个", toFail.size(), pending.size());
                 }
             }
         }
+        long totalFail = results.values().stream().filter(HandlerResult::error).count();
+        LOGGER.info("Executor结束: 共完成{}个子任务, 其中失败{}个", results.size(), totalFail);
         return results;
     }
 
@@ -433,14 +460,14 @@ public class MultiAgentService {
                         .param("doneTasks", doneTasks.isBlank() ? "无" : doneTasks)
                         .param("failedTasks", failedTasks)
                         .param("pendingTasks", pendingTasks.isBlank() ? "无" : pendingTasks))
+                .advisors(new SimpleLoggerAdvisor())
                 .call()
                 .entity(TaskPlan.class, spec -> spec.validateSchema());
         if (newPlan == null || newPlan.tasks() == null || newPlan.tasks().isEmpty()) {
             LOGGER.warn("重新规划返回空，剩余任务不再执行");
             return List.of();
         }
-        LOGGER.info("重新规划出 {} 个剩余任务: {}", newPlan.tasks().size(),
-                newPlan.tasks().stream().map(Task::goal).toList());
+        logPlan("重新规划", newPlan.tasks());
         return newPlan.tasks();
     }
 
