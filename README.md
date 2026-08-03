@@ -43,8 +43,6 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 
 ## 工作流程
 
-### 单 Agent 路由
-
 ```mermaid
 flowchart TD
     U["用户 / chat.html"] --> C["POST /ai/chat"]
@@ -72,46 +70,6 @@ flowchart TD
 - SKILL 单次调用单一工具，不进入工具调用循环
 - GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 - ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
-
-### 多 Agent 编排（演示版）
-
-```mermaid
-flowchart TD
-    U2["用户 / chat.html（多Agent开关）"] --> P["POST /ai/multi-agent"]
-    P --> PL["Planner：LLM 拆解任务<br/>结构化输出 TaskPlan（Task 列表）"]
-    PL --> INIT["Executor 初始化<br/>pending = 所有子任务<br/>results = 空"]
-
-    INIT --> WHILE{"pending 是否为空？"}
-    WHILE -- "否" --> FILTER["筛选就绪任务 ready<br/>① dependsOn 为空 → 就绪<br/>② dependsOn 已在 results → 就绪<br/>③ 其余留待下一波"]
-    FILTER --> EMPTY{"ready 是否为空？"}
-    EMPTY -- "是（依赖断链/环）" --> FALLBACK["兜底：剩余任务全部放行"]
-    EMPTY -- "否" --> REMOVE["pending 移除 ready"]
-    FALLBACK --> REMOVE
-    REMOVE --> RUN["线程池并行执行 ready<br/>（每个子任务独立会话）"]
-    RUN --> INJECT["子Agent 有依赖时<br/>依赖结果拼入 goal"]
-    INJECT --> JOIN["allOf().join()<br/>等待本波次全部完成"]
-    JOIN --> STORE["本波次结果写入 results<br/>key = 子任务 goal"]
-    STORE --> WHILE
-
-    WHILE -- "是（全部完成）" --> AGG["汇总 Agent<br/>整合所有子任务结果"]
-    AGG --> RESP["AgentResponse"]
-    RESP --> U2
-```
-
-**波次示意**（示例：查询产品 → 生成文档，Planner 输出 2 个子任务）：
-
-| 波次 | 就绪任务 | 说明 |
-| --- | --- | --- |
-| 波次 1 | T1（GSKILL，无依赖） | 直接就绪，线程池执行，结果写入 results |
-| 波次 2 | T2（SKILL，dependsOn=T1.goal） | 依赖已在 results → 就绪，把 T1 结果拼入 goal 后执行 |
-| 波次 3 | 无 | pending 为空，循环结束，进入汇总 |
-
-依赖任务总是比其依赖晚一个波次，无依赖任务可并行；循环次数 = 任务依赖链的最大深度 + 1。
-
-**多 Agent 要点**：
-- 每个子任务使用独立会话 ID 执行，避免污染主会话
-- 子任务声明 `dependsOn` 时，将依赖任务的执行结果拼入 goal，供子 Agent 参考（如"生成文档"依赖"查询产品数据"）
-- 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
 
 ## 项目结构
 
@@ -482,6 +440,50 @@ mvn test
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - ASKILL 审批机制：带 `@Approval(enable=true)` 注解的方法通过 AOP 切面拦截，自动创建 PENDING 记录并返回等待人工审批；查询类方法（`getMyApprovals`、`checkApprovalById`）无需审批直接放行
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
+
+## 附录：多 Agent 编排（演示版）
+
+多 Agent 编排是独立于单 Agent 路由的实验性功能，作为功能演示单独介绍。它不改变原有的消息分类机制——前端通过"多Agent"开关选择走 `/ai/multi-agent`，普通入口仍走 `/ai/chat` 单 Agent 路由。
+
+核心思路：**Planner 拆解任务 → Executor 调度执行（复用现有 Handler）→ 汇总 Agent 生成最终回答**，编排层只负责"拆解、调度、汇总"，不重复实现 Agent 能力。
+
+```mermaid
+flowchart TD
+    U2["用户 / chat.html（多Agent开关）"] --> P["POST /ai/multi-agent"]
+    P --> PL["Planner：LLM 拆解任务<br/>结构化输出 TaskPlan（Task 列表）"]
+    PL --> INIT["Executor 初始化<br/>pending = 所有子任务<br/>results = 空"]
+
+    INIT --> WHILE{"pending 是否为空？"}
+    WHILE -- "否" --> FILTER["筛选就绪任务 ready<br/>① dependsOn 为空 → 就绪<br/>② dependsOn 已在 results → 就绪<br/>③ 其余留待下一波"]
+    FILTER --> EMPTY{"ready 是否为空？"}
+    EMPTY -- "是（依赖断链/环）" --> FALLBACK["兜底：剩余任务全部放行"]
+    EMPTY -- "否" --> REMOVE["pending 移除 ready"]
+    FALLBACK --> REMOVE
+    REMOVE --> RUN["线程池并行执行 ready<br/>（每个子任务独立会话）"]
+    RUN --> INJECT["子Agent 有依赖时<br/>依赖结果拼入 goal"]
+    INJECT --> JOIN["allOf().join()<br/>等待本波次全部完成"]
+    JOIN --> STORE["本波次结果写入 results<br/>key = 子任务 goal"]
+    STORE --> WHILE
+
+    WHILE -- "是（全部完成）" --> AGG["汇总 Agent<br/>整合所有子任务结果"]
+    AGG --> RESP["AgentResponse"]
+    RESP --> U2
+```
+
+**波次示意**（示例：查询产品 → 生成文档，Planner 输出 2 个子任务）：
+
+| 波次 | 就绪任务 | 说明 |
+| --- | --- | --- |
+| 波次 1 | T1（GSKILL，无依赖） | 直接就绪，线程池执行，结果写入 results |
+| 波次 2 | T2（SKILL，dependsOn=T1.goal） | 依赖已在 results → 就绪，把 T1 结果拼入 goal 后执行 |
+| 波次 3 | 无 | pending 为空，循环结束，进入汇总 |
+
+依赖任务总是比其依赖晚一个波次，无依赖任务可并行；循环次数 = 任务依赖链的最大深度 + 1。
+
+**多 Agent 要点**：
+- 每个子任务使用独立会话 ID 执行，避免污染主会话
+- 子任务声明 `dependsOn` 时，将依赖任务的执行结果拼入 goal，供子 Agent 参考（如"生成文档"依赖"查询产品数据"）
+- 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
 
 ## 附录：工具调用循环
 
