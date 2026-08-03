@@ -9,7 +9,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **智能消息分类**：支持 `CHAT`、`ASKILL`、`RAG`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
 - **普通聊天**：基于 DeepSeek 的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
-- **SKILL 企业固定技能**：单次调用单一工具，不进入工具调用循环
+- **SKILL 企业固定技能**：提示词引导单次调用单一工具（仍走工具调用循环，仅约束 LLM 一次只选一个工具）
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
   - `DocumentSkill`：生成 Markdown 文档、读取已生成文档内容、生成文本文件
 - **GSKILL 通用技能**：由大模型决定调用工具计划，支持多轮工具调用循环
@@ -51,7 +51,7 @@ flowchart TD
     D -->|"CHAT"| CH["普通聊天"]
     D -->|"ASKILL"| AS["审批技能（敏感操作需人工审批）"]
     D -->|"RAG"| RA["本地向量检索 + 大模型回答"]
-    D -->|"SKILL"| SK["技能执行（单次工具调用）"]
+    D -->|"SKILL"| SK["技能执行（提示词引导单次工具调用）"]
     D -->|"GSKILL"| GS["通用技能执行（多轮工具调用）"]
     D -->|"MCP"| MC["MCP 外部服务 Tool Calling"]
     CH --> M["MessageChatMemoryAdvisor"]
@@ -67,7 +67,7 @@ flowchart TD
 **设计要点**：
 - 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录。分类优先级：`SKILL > GSKILL > ASKILL > RAG > MCP > CHAT`
 - **双窗口记忆架构**：CHAT/RAG 使用大窗口记忆（20条消息），保证多轮对话连贯；SKILL/GSKILL/ASKILL/MCP 使用小窗口记忆（4条消息），让旧查询结果快速淘汰，迫使 LLM 重新调用工具获取最新数据
-- SKILL 单次调用单一工具，不进入工具调用循环
+- SKILL 提示词引导单次调用单一工具（框架仍走工具调用循环，仅约束 LLM 一次只选一个工具；GSKILL 不约束，模型一次响应可含多个工具调用，框架会全部执行后回填继续循环）
 - GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
 - ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
 
@@ -489,7 +489,7 @@ flowchart TD
 | 入口 | `/ai/multi-agent`（前端多Agent开关） | `/ai/chat`（消息分类自动路由） |
 | 执行模型 | 多个独立子 Agent：Planner 拆解 → Executor 并行执行 → 汇总 Agent 整合 | 单个 Agent 内多轮工具调用循环（`ToolCallingAdvisor` 自动处理） |
 | 任务拆分 | Planner 结构化输出 TaskPlan，按类型拆成多个子任务 | 不拆任务，同一 LLM 依据上下文连续调用工具 |
-| 并发能力 | 线程池并行：同波次无依赖子任务并发执行 | 串行：LLM 循环一次调用一个工具 |
+| 并发能力 | 线程池并行：同波次无依赖子任务并发执行 | 单 Agent 内工具级并发：一次响应含多个工具调用时，框架逐个全部执行后合并回填 |
 | 依赖处理 | 支持 `dependsOn`，依赖结果拼入子任务 goal | 无显式依赖，靠对话历史传递中间结果 |
 | 工具范围 | 子任务可跨类型调用（RAG/GSKILL/SKILL/ASKILL/MCP/CHAT） | 仅当前绑定的一组 GSkill 工具 |
 | 会话/记忆 | 每个子任务独立会话 ID，互不污染 | 单会话，小窗口记忆（4 条消息） |
