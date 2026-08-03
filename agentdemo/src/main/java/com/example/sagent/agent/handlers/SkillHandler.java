@@ -22,6 +22,8 @@ public class SkillHandler implements AgentHandler {
             如果没有合适的工具，直接回答用户问题，不需要强行调用工具。
 
             工具调用完成后，用中文总结结果给用户。**必须保留工具返回的所有下载链接（/files/download/开头的URL），不要省略或改写**。
+
+            重要：如果用户要求"生成/创建/保存一份文档或文件"，必须调用 generateMarkdownDocument 等生成类工具创建**新文件**并返回下载链接；不要因为output目录下已有相似文件而改用readDocument读取旧文件来应付。
             """;
 
     private final ChatClient chatClient;

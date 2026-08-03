@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -57,8 +59,8 @@ public class FileController {
             }
 
             return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                    .contentType(resolveMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(resource.getFilename()))
                     .body(resource);
         } catch (MalformedURLException e) {
             return ResponseEntity.badRequest().build();
@@ -90,7 +92,7 @@ public class FileController {
             }
 
             return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
+                    .contentType(resolveMediaType(contentType))
                     .body(resource);
         } catch (MalformedURLException e) {
             return ResponseEntity.badRequest().build();
@@ -122,5 +124,32 @@ public class FileController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    /**
+     * 解析媒体类型，文本类类型补充UTF-8字符集，避免浏览器按默认编码解码导致中文乱码
+     *
+     * @param contentType 原始Content-Type
+     * @return 带charset的MediaType
+     */
+    private MediaType resolveMediaType(String contentType) {
+        MediaType mediaType = MediaType.parseMediaType(contentType);
+        if (mediaType.getCharset() == null && "text".equals(mediaType.getType())) {
+            return new MediaType(mediaType, StandardCharsets.UTF_8);
+        }
+        return mediaType;
+    }
+
+    /**
+     * 构造Content-Disposition响应头（RFC 5987标准）
+     * 中文文件名使用filename*（UTF-8百分号编码）传递，filename提供ASCII回退，
+     * 避免Tomcat因非ASCII字符丢弃整个响应头
+     *
+     * @param filename 文件名
+     * @return Content-Disposition头值
+     */
+    private String buildContentDisposition(String filename) {
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        return "attachment; filename=\"download\"; filename*=UTF-8''" + encoded;
     }
 }

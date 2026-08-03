@@ -115,6 +115,27 @@
             white-space: nowrap;
         }
 
+        .mode-switch {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 4px 10px;
+            margin-right: 4px;
+            background: #f7f9fa;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+        }
+
+        .mode-label {
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .mode-switch .el-switch {
+            transform: scale(0.8);
+        }
+
         .status-dot {
             width: 7px;
             height: 7px;
@@ -501,6 +522,11 @@
                 <span class="status-dot"></span>
                 <span>OpenRouter ready</span>
             </div>
+            <div class="mode-switch">
+                <span class="mode-label">多Agent</span>
+                <el-switch v-model="multiAgentMode" active-color="#176b5b"
+                           @change="onModeChange"></el-switch>
+            </div>
             <el-tooltip content="清空会话" placement="bottom">
                 <button class="icon-button" type="button" aria-label="清空会话"
                         :disabled="loading || messages.length === 0" @click="clearMessages">
@@ -663,6 +689,7 @@
                 conversationId: "",
                 nextId: 1,
                 statusText: "就绪",
+                multiAgentMode: false,
                 approvalDialogVisible: false,
                 approvals: [],
                 approvalLoading: false,
@@ -710,8 +737,28 @@
                     DATABASE: "数据库查询",
                     SKILL: "技能执行",
                     GSKILL: "通用技能",
-                    ASKILL: "审批技能"
+                    ASKILL: "审批技能",
+                    MULTI: "多Agent编排",
+                    MCP: "MCP 工具"
                 }[type] || type;
+            },
+            onModeChange: function (active) {
+                if (this.loading) {
+                    this.stopRequest();
+                }
+                this.statusText = active ? "多Agent编排模式 · 复杂任务自动拆解并行执行" : "就绪";
+                if (!active) {
+                    this.messages = this.messages.map(function (m) {
+                        if (m.role === "assistant" && m.type === "MULTI") {
+                            m.type = "";
+                            m.routeReason = "";
+                        }
+                        return m;
+                    });
+                }
+                this.$nextTick(function () {
+                    this.$refs.input.focus();
+                });
             },
             formatContent: function (content) {
                 if (!content) return "";
@@ -732,12 +779,22 @@
                 };
                 escaped = escaped.replace(/\\n/g, '<br/>').replace(/\n/g, '<br/>')
                 escaped = escaped.replace(/(https?:\/\/[^\s<>"'`，。！？、；：）)\]}\\]+)/g, '<a href="$1" target="_blank">$1</a>')
+                // 先处理markdown链接格式，用占位符保护生成的<a>标签，防止被后续裸URL正则二次处理
+                var linkPlaceholders = [];
                 escaped = escaped.replace(/\[([^\]\r\n]+)]\((\/files\/download\/[^\s<>"')]+)\)/g, function (_, label, url) {
-                    return createDownloadLink(url, label);
+                    var token = '\u0001DL' + linkPlaceholders.length + '\u0001';
+                    linkPlaceholders.push(createDownloadLink(url, label));
+                    return token;
                 });
-                return escaped.replace(urlPattern, function (match) {
+                // 处理裸URL
+                escaped = escaped.replace(urlPattern, function (match) {
                     return createDownloadLink(match);
                 });
+                // 恢复markdown链接
+                linkPlaceholders.forEach(function (html, i) {
+                    escaped = escaped.replace('\u0001DL' + i + '\u0001', html);
+                });
+                return escaped;
             },
             sendMessage: async function () {
                 var content = this.input.trim();
@@ -774,7 +831,8 @@
                 this.scrollToBottom();
 
                 try {
-                    var response = await fetch("/ai/chat", {
+                    var apiPath = this.multiAgentMode ? "/ai/multi-agent" : "/ai/chat";
+                    var response = await fetch(apiPath, {
                         method: "POST",
                         headers: {
                             "Accept": "application/json",
@@ -797,8 +855,13 @@
 
                     assistantMessage.content = body.answer || "模型返回了空响应";
                     this.conversationId = body.conversationId || this.conversationId;
-                    assistantMessage.type = body.type || "";
-                    assistantMessage.routeReason = body.routeReason || "";
+                    if (this.multiAgentMode) {
+                        assistantMessage.type = "MULTI";
+                        assistantMessage.routeReason = body.routeReason || "Planner拆解 -> 并行执行 -> 汇总";
+                    } else {
+                        assistantMessage.type = body.type || "";
+                        assistantMessage.routeReason = body.routeReason || "";
+                    }
                     assistantMessage.sources = body.sources || [];
                     assistantMessage.duration = Math.round(performance.now() - startedAt);
                     this.statusText = "完成 · " + assistantMessage.duration + " ms";

@@ -16,9 +16,9 @@ public class MessageClassifier {
 
             【SKILL】组合技能工具（单次调用）
             - WebPageDownloadSkill: 下载网页中所有图片/视频/音频/文档/HTML内容、网页截图（解析HTML提取img/video/audio/a标签→下载到文件夹→可选压缩）
-            - DocumentTool: 生成Markdown文档、生成文本文件、列出输出目录文件
-            - CompressionTool: 压缩多个文件为ZIP包
-            场景：下载网页图片、下载网页视频、下载网页音频、下载网页文档、下载网页内容、保存网页HTML、网页截图、压缩文件、保存文件、文档操作等需要调用工具的任务，仅调用一个工具
+            - DocumentSkill: 生成Markdown文档、读取已生成文档内容、生成文本文件
+            - compressFiles: 压缩多个文件为ZIP包
+            场景：下载网页图片、下载网页视频、下载网页音频、下载网页文档、下载网页内容、保存网页HTML、网页截图、压缩文件、生成Markdown文档、保存文件、文档操作等需要调用工具的任务，仅调用一个工具
 
             【GSKILL】通用技能工具（循环调用）
             - DataBaseSkill: listProducts()查询全部产品、findProductsByName()按名称模糊查询、findProductsByMaxPrice()按最高价格查询、findProductById()按ID精确查询、countProducts()统计产品总数

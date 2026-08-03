@@ -1,6 +1,7 @@
 package com.example.sagent.controller;
 
 import com.example.sagent.agent.core.AgentService;
+import com.example.sagent.agent.multi.MultiAgentService;
 import com.example.sagent.agent.model.AgentResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -23,10 +24,16 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 public class ChatController {
 
     private final AgentService agentService;
+    private final MultiAgentService multiAgentService;
     private final ChatMemory chatMemory;
 
-    public ChatController(AgentService agentService, @Qualifier("chatMemory") ChatMemory chatMemory) {
+    public ChatController(
+            AgentService agentService,
+            MultiAgentService multiAgentService,
+            @Qualifier("chatMemory") ChatMemory chatMemory
+    ) {
         this.agentService = agentService;
+        this.multiAgentService = multiAgentService;
         this.chatMemory = chatMemory;
     }
 
@@ -34,6 +41,24 @@ public class ChatController {
     public AgentResponse chat(@RequestBody ChatRequest request) {
         String conversationId = requireConversationId(request.conversationId());
         return agentService.ask(conversationId, requireMessage(request.message()));
+    }
+
+    /**
+     * 多Agent编排演示端点
+     * Planner拆解任务 -> 复用现有Handler并行执行 -> 汇总生成最终回答
+     */
+    @PostMapping("/multi-agent")
+    public AgentResponse multiAgent(@RequestBody ChatRequest request) {
+        String conversationId = requireConversationId(request.conversationId());
+        String message = requireMessage(request.message());
+        var result = multiAgentService.handle(conversationId, message);
+        return new AgentResponse(
+                conversationId,
+                result.answer(),
+                null,
+                "multi-agent",
+                result.sources()
+        );
     }
 
     @DeleteMapping("/conversations/{conversationId}")
