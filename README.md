@@ -47,7 +47,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 
 ```mermaid
 flowchart TD
-    U["用户 / chat.html"] --> C["POST /api/chat"]
+    U["用户 / chat.html"] --> C["POST /ai/chat"]
     C --> R["大模型消息分类"]
     R --> D{"RouteDecision"}
     D -->|"CHAT"| CH["普通聊天"]
@@ -65,6 +65,13 @@ flowchart TD
     M --> A["AgentResponse"]
     A --> U
 ```
+
+**设计要点**：
+- 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录。分类优先级：`SKILL > GSKILL > ASKILL > RAG > MCP > CHAT`
+- **双窗口记忆架构**：CHAT/RAG 使用大窗口记忆（20条消息），保证多轮对话连贯；SKILL/GSKILL/ASKILL/MCP 使用小窗口记忆（4条消息），让旧查询结果快速淘汰，迫使 LLM 重新调用工具获取最新数据
+- SKILL 单次调用单一工具，不进入工具调用循环
+- GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
+- ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
 
 ### 多 Agent 编排（演示版）
 
@@ -105,13 +112,6 @@ flowchart TD
 - 每个子任务使用独立会话 ID 执行，避免污染主会话
 - 子任务声明 `dependsOn` 时，将依赖任务的执行结果拼入 goal，供子 Agent 参考（如"生成文档"依赖"查询产品数据"）
 - 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
-
-**设计要点**：
-- 分类器会读取历史消息来理解上下文，但不会使用会自动写入消息的记忆 Advisor，避免把 `RouteDecision` 写入正式聊天记录。分类优先级：`SKILL > GSKILL > ASKILL > RAG > MCP > CHAT`
-- **双窗口记忆架构**：CHAT/RAG 使用大窗口记忆（20条消息），保证多轮对话连贯；SKILL/GSKILL/ASKILL/MCP 使用小窗口记忆（4条消息），让旧查询结果快速淘汰，迫使 LLM 重新调用工具获取最新数据
-- SKILL 单次调用单一工具，不进入工具调用循环
-- GSKILL/MCP 工具调用循环由 Spring AI 的 `ToolCallingAdvisor` 自动处理
-- ASKILL 敏感操作需人工审批，审批通过后通过 `ToolRegistry` 重新调用原始方法执行业务逻辑
 
 ## 项目结构
 
@@ -266,14 +266,17 @@ http://localhost:8080/chat.html
 ### 发送消息
 
 ```http
-POST /api/chat?conversationId=demo-1
+POST /ai/chat
 Content-Type: application/json
 ```
 
 请求体：
 
 ```json
-"DEEPSEEK_API_KEY 在哪里配置？"
+{
+  "conversationId": "demo-1",
+  "message": "DEEPSEEK_API_KEY 在哪里配置？"
+}
 ```
 
 响应：
@@ -286,8 +289,7 @@ Content-Type: application/json
   "routeReason": "用户询问项目配置",
   "sources": [
     "sagent-overview.md"
-  ],
-  "latencyMs": 1500
+  ]
 }
 ```
 
@@ -296,6 +298,14 @@ Content-Type: application/json
 - `message`：用户消息内容
 
 **注意**：当前接口一次性返回完整 JSON，不是 SSE 流式响应。
+
+### 会话管理
+
+```http
+DELETE /ai/conversations/{conversationId}
+```
+
+清空指定会话的服务端记忆（返回 204）。
 
 ### 多 Agent 编排
 
@@ -313,7 +323,7 @@ Content-Type: application/json
 }
 ```
 
-响应：`AgentResponse` 结构同 `/api/chat`，`type` 固定为 `multi-agent`。流程为 Planner 结构化输出任务列表 → Executor 按依赖并行执行子 Agent → 汇总 Agent 整合结果，汇总回答末尾保留所有 `/files/download/` 下载链接。
+响应：`AgentResponse` 结构同 `/ai/chat`，`type` 固定为 `multi-agent`。流程为 Planner 结构化输出任务列表 → Executor 按依赖并行执行子 Agent → 汇总 Agent 整合结果，汇总回答末尾保留所有 `/files/download/` 下载链接。
 
 ### 审批接口
 
