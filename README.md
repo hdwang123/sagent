@@ -71,15 +71,35 @@ flowchart TD
 ```mermaid
 flowchart TD
     U2["用户 / chat.html（多Agent开关）"] --> P["POST /ai/multi-agent"]
-    P --> PL["Planner：LLM 拆解任务（结构化输出 TaskPlan）"]
-    PL --> EX["Executor：按依赖分波次调度"]
-    EX -->|"无依赖"| S1["子Agent 1（复用现有 Handler）"]
-    EX -->|"依赖"| S2["子Agent 2（注入依赖任务结果）"]
-    S1 --> AG["汇总 Agent：整合所有子任务结果"]
-    S2 --> AG
-    AG --> A2["AgentResponse"]
-    A2 --> U2
+    P --> PL["Planner：LLM 拆解任务<br/>结构化输出 TaskPlan（Task 列表）"]
+    PL --> INIT["Executor 初始化<br/>pending = 所有子任务<br/>results = 空"]
+
+    INIT --> WHILE{"pending 是否为空？"}
+    WHILE -- "否" --> FILTER["筛选就绪任务 ready<br/>① dependsOn 为空 → 就绪<br/>② dependsOn 已在 results → 就绪<br/>③ 其余留待下一波"]
+    FILTER --> EMPTY{"ready 是否为空？"}
+    EMPTY -- "是（依赖断链/环）" --> FALLBACK["兜底：剩余任务全部放行"]
+    EMPTY -- "否" --> REMOVE["pending 移除 ready"]
+    FALLBACK --> REMOVE
+    REMOVE --> RUN["线程池并行执行 ready<br/>（每个子任务独立会话）"]
+    RUN --> INJECT["子Agent 有依赖时<br/>依赖结果拼入 goal"]
+    INJECT --> JOIN["allOf().join()<br/>等待本波次全部完成"]
+    JOIN --> STORE["本波次结果写入 results<br/>key = 子任务 goal"]
+    STORE --> WHILE
+
+    WHILE -- "是（全部完成）" --> AGG["汇总 Agent<br/>整合所有子任务结果"]
+    AGG --> RESP["AgentResponse"]
+    RESP --> U2
 ```
+
+**波次示意**（示例：查询产品 → 生成文档，Planner 输出 2 个子任务）：
+
+| 波次 | 就绪任务 | 说明 |
+| --- | --- | --- |
+| 波次 1 | T1（GSKILL，无依赖） | 直接就绪，线程池执行，结果写入 results |
+| 波次 2 | T2（SKILL，dependsOn=T1.goal） | 依赖已在 results → 就绪，把 T1 结果拼入 goal 后执行 |
+| 波次 3 | 无 | pending 为空，循环结束，进入汇总 |
+
+依赖任务总是比其依赖晚一个波次，无依赖任务可并行；循环次数 = 任务依赖链的最大深度 + 1。
 
 **多 Agent 要点**：
 - 每个子任务使用独立会话 ID 执行，避免污染主会话
