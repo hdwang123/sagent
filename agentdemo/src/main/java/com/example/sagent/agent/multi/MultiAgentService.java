@@ -17,8 +17,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -43,17 +46,18 @@ public class MultiAgentService {
 
             拆解规则：
             1. 只拆解需要多个不同能力的复杂任务；简单任务只返回1个子任务
-            2. 每个子任务的goal必须自包含、可独立执行，写明具体目标和参数（如"查询产品ABC的价格"）
-            3. dependsOn是依赖的前序子任务goal列表（数组）：如果子任务B需要子任务A的结果，B的dependsOn必须包含A的goal原文；如果B需要多个子任务的结果（如"生成文档"同时依赖RAG查询和数据库查询），dependsOn就填这两个goal组成的数组；无依赖则dependsOn填空数组[]
-            4. 最多拆解4个子任务
-            5. type字段必须是RAG/GSKILL/SKILL/ASKILL/MCP/CHAT之一
-            6. 示例一（单依赖）：用户要"查询产品并生成文档"，应拆为两个子任务：
-               任务1: type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
-               任务2: type=SKILL, goal=将查询到的所有产品信息生成一份Markdown文档并保存, dependsOn=[查询所有产品的信息]
-            7. 示例二（多依赖合并）：用户要"结合知识库和产品数据生成一份报告"，应拆为三个子任务：
-               任务1: type=RAG, goal=查询Sagent项目介绍, dependsOn=[]
-               任务2: type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
-               任务3: type=SKILL, goal=结合RAG查询到的项目介绍和数据库查询到的产品信息，生成一份综合报告Markdown文档, dependsOn=[查询Sagent项目介绍, 查询所有产品的信息]
+            2. 每个子任务必须有一个唯一标识 id（格式如 t1、t2、t3...，按顺序递增），用于被其他任务通过 dependsOn 引用
+            3. 每个子任务的goal必须自包含、可独立执行，写明具体目标和参数（如"查询产品ABC的价格"）
+            4. dependsOn是依赖的前序子任务 id 列表（数组）：如果子任务B需要子任务A的结果，B的dependsOn必须包含A的id；如果B需要多个子任务的结果（如"生成文档"同时依赖RAG查询和数据库查询），dependsOn就填这两个任务的id组成的数组；无依赖则dependsOn填空数组[]
+            5. 最多拆解4个子任务
+            6. type字段必须是RAG/GSKILL/SKILL/ASKILL/MCP/CHAT之一
+            7. 示例一（单依赖）：用户要"查询产品并生成文档"，应拆为两个子任务：
+               任务1: id=t1, type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
+               任务2: id=t2, type=SKILL, goal=将查询到的所有产品信息生成一份Markdown文档并保存, dependsOn=[t1]
+            8. 示例二（多依赖合并）：用户要"结合知识库和产品数据生成一份报告"，应拆为三个子任务：
+               任务1: id=t1, type=RAG, goal=查询Sagent项目介绍, dependsOn=[]
+               任务2: id=t2, type=GSKILL, goal=查询所有产品的信息, dependsOn=[]
+               任务3: id=t3, type=SKILL, goal=结合RAG查询到的项目介绍和数据库查询到的产品信息，生成一份综合报告Markdown文档, dependsOn=[t1, t2]
             """;
 
     private static final String AGGREGATE_PROMPT = """
@@ -68,6 +72,11 @@ public class MultiAgentService {
     private final ChatClient aggregateClient;
     private final HandlerRegistry handlerRegistry;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
+
+    /**
+     * 单个子Agent执行超时阈值（秒），超时后整轮编排不再等待该任务，直接返回错误结果
+     */
+    private static final long SUB_AGENT_TIMEOUT_SECONDS = 60L;
 
     public MultiAgentService(
             ChatClient.Builder chatClientBuilder,
@@ -91,11 +100,15 @@ public class MultiAgentService {
         LOGGER.info("Planner拆解出 {} 个子任务: {}", plan.tasks().size(),
                 plan.tasks().stream().map(Task::goal).toList());
 
-        // 2. Executor按依赖执行
-        Map<String, HandlerResult> results = execute(conversationId, plan.tasks());
+        // id -> Task 映射，供 execute/aggregate 按id查goal描述
+        Map<String, Task> taskById = plan.tasks().stream()
+                .collect(Collectors.toMap(Task::id, t -> t, (a, b) -> a, LinkedHashMap::new));
+
+        // 2. Executor按依赖执行（结果以子任务id为键）
+        Map<String, HandlerResult> results = execute(conversationId, plan.tasks(), taskById);
 
         // 3. 汇总Agent生成最终回答
-        String answer = aggregate(message, results);
+        String answer = aggregate(message, results, taskById);
         // 4. 兜底：从子任务结果中提取下载链接，确保汇总遗漏时用户仍能下载
         List<String> downloadLinks = extractDownloadLinks(results);
         List<String> sources = results.values().stream()
@@ -122,15 +135,21 @@ public class MultiAgentService {
                 .entity(TaskPlan.class, spec -> spec.validateSchema());
         if (plan == null || plan.tasks() == null || plan.tasks().isEmpty()) {
             // 兜底：当作单个普通聊天任务
-            return new TaskPlan(List.of(new Task(AgentType.CHAT, message, List.of())));
+            return new TaskPlan(List.of(new Task("t1", AgentType.CHAT, message, List.of())));
         }
+        // id 与 dependsOn 必须由 LLM 协同生成才能匹配，代码侧补 id 与 LLM 在 dependsOn 里的引用对不上，故不做兜底
         return plan;
     }
 
     /**
-     * Executor：按依赖关系分波次执行子任务，无依赖的任务并行执行
+     * Executor：按依赖关系分波次执行子任务，无依赖的任务并行执行。
+     * 结果以子任务 id 为键；单个子任务异常或超时不会中断整轮编排，会降级为错误结果。
+     *
+     * @param conversationId 会话ID
+     * @param tasks          子任务列表
+     * @param taskById       id -> Task 映射，供 runSubAgent 按依赖id查goal描述
      */
-    private Map<String, HandlerResult> execute(String conversationId, List<Task> tasks) {
+    private Map<String, HandlerResult> execute(String conversationId, List<Task> tasks, Map<String, Task> taskById) {
         Map<String, HandlerResult> results = new LinkedHashMap<>();
         List<Task> pending = new ArrayList<>(tasks);
 
@@ -147,11 +166,22 @@ public class MultiAgentService {
             }
             pending.removeAll(ready);
 
-            // 本轮并行执行
+            // 本轮并行执行：每个子任务加超时与异常兜底，避免单个任务卡死/抛错中断整轮
             List<CompletableFuture<Map.Entry<String, HandlerResult>>> futures = ready.stream()
                     .map(task -> CompletableFuture.supplyAsync(
-                            () -> Map.entry(task.goal(), runSubAgent(conversationId, task, results)),
-                            executor))
+                            () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, taskById)),
+                            executor)
+                            .orTimeout(SUB_AGENT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            .exceptionally(ex -> {
+                                Throwable root = (ex instanceof CompletionException && ex.getCause() != null)
+                                        ? ex.getCause() : ex;
+                                String msg = root instanceof TimeoutException
+                                        ? "子任务执行超时（>" + SUB_AGENT_TIMEOUT_SECONDS + "s）"
+                                        : "子任务执行失败：" + root.getMessage();
+                                LOGGER.error("子Agent[{}] {}", task.type(), msg, root);
+                                return Map.entry(task.id(), new HandlerResult(
+                                        "子任务[" + task.goal() + "]" + msg, List.of(), true));
+                            }))
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             futures.forEach(f -> {
@@ -163,38 +193,61 @@ public class MultiAgentService {
     }
 
     /**
-     * 执行单个子任务：复用现有Handler，使用独立会话ID避免污染主会话
-     * 若任务声明了依赖，将所有依赖任务的执行结果一并拼入goal，供子Agent参考
+     * 执行单个子任务：复用现有Handler，使用独立会话ID避免污染主会话。
+     * 若任务声明了依赖，将所有依赖任务的执行结果一并拼入goal，供子Agent参考。
+     * 整个方法体被 try-catch 包裹：任何异常都降级为错误结果返回，不向上抛出，
+     * 避免单个子任务拖垮整轮编排（与 execute 中的超时兜底形成双重防护）。
+     *
+     * @param conversationId 主会话ID（仅用于降级聊天场景）
+     * @param task           待执行的子任务
+     * @param results        已完成子任务的结果（key为子任务id）
+     * @param taskById       id -> Task 映射，用于按依赖id查goal作为描述文本
      */
-    private HandlerResult runSubAgent(String conversationId, Task task, Map<String, HandlerResult> results) {
-        AgentHandler handler = handlerRegistry.get(task.type());
-        if (handler == null) {
-            LOGGER.warn("无处理器: {}, 子任务[{}]降级为普通聊天", task.type(), task.goal());
-            return handlerRegistry.get(AgentType.CHAT).handle(conversationId, task.goal());
-        }
-        String subConversationId = UUID.randomUUID().toString();
-        String goal = task.goal();
-        List<String> depGoals = task.dependsOn() == null ? List.of() : task.dependsOn();
-        if (!depGoals.isEmpty()) {
-            List<String> depBlocks = depGoals.stream()
-                    .filter(results::containsKey)
-                    .map(dep -> "【依赖任务：" + dep + "】\n" + results.get(dep).answer())
-                    .toList();
-            if (!depBlocks.isEmpty()) {
-                goal = task.goal() + "\n\n以下是依赖任务的执行结果，请基于这些结果完成任务：\n"
-                        + String.join("\n\n", depBlocks);
+    private HandlerResult runSubAgent(String conversationId, Task task,
+                                      Map<String, HandlerResult> results, Map<String, Task> taskById) {
+        try {
+            AgentHandler handler = handlerRegistry.get(task.type());
+            if (handler == null) {
+                LOGGER.warn("无处理器: {}, 子任务[{}]降级为普通聊天", task.type(), task.goal());
+                return handlerRegistry.get(AgentType.CHAT).handle(conversationId, task.goal());
             }
+            String subConversationId = UUID.randomUUID().toString();
+            String goal = task.goal();
+            List<String> depIds = task.dependsOn() == null ? List.of() : task.dependsOn();
+            if (!depIds.isEmpty()) {
+                List<String> depBlocks = depIds.stream()
+                        .filter(results::containsKey)
+                        .map(depId -> {
+                            // 用依赖任务的goal作为可读描述，结果通过id查
+                            Task depTask = taskById.get(depId);
+                            String depGoal = depTask == null ? depId : depTask.goal();
+                            return "【依赖任务：" + depGoal + "】\n" + results.get(depId).answer();
+                        })
+                        .toList();
+                if (!depBlocks.isEmpty()) {
+                    goal = task.goal() + "\n\n以下是依赖任务的执行结果，请基于这些结果完成任务：\n"
+                            + String.join("\n\n", depBlocks);
+                }
+            }
+            LOGGER.info("子Agent[{}, 会话{}] 执行: {}", task.type(), subConversationId, task.goal());
+            return handler.handle(subConversationId, goal);
+        } catch (Exception ex) {
+            LOGGER.error("子Agent[{}]执行异常: {}", task.type(), ex.getMessage(), ex);
+            return new HandlerResult("子任务[" + task.goal() + "]执行异常：" + ex.getMessage(), List.of(), true);
         }
-        LOGGER.info("子Agent[{}, 会话{}] 执行: {}", task.type(), subConversationId, task.goal());
-        return handler.handle(subConversationId, goal);
     }
 
     /**
-     * 汇总Agent：将子任务结果整合为最终回答
+     * 汇总Agent：将子任务结果整合为最终回答。
+     * 展示时用子任务goal作为可读标签（而非id），便于汇总模型理解。
      */
-    private String aggregate(String message, Map<String, HandlerResult> results) {
+    private String aggregate(String message, Map<String, HandlerResult> results, Map<String, Task> taskById) {
         String subResults = results.entrySet().stream()
-                .map(e -> "任务: " + e.getKey() + "\n结果: " + e.getValue().answer())
+                .map(e -> {
+                    Task t = taskById.get(e.getKey());
+                    String label = t == null ? e.getKey() : t.goal();
+                    return "任务: " + label + "\n结果: " + e.getValue().answer();
+                })
                 .collect(Collectors.joining("\n\n---\n\n"));
         return aggregateClient.prompt()
                 .system(AGGREGATE_PROMPT)
