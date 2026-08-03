@@ -377,14 +377,7 @@ What does WHO recommend to reduce dementia risk?
 截取百度首页的截图。
 下载网页中的图片。
 抓取网页内容并转换为 Markdown。
-查询所有产品信息并生成一份Markdown文档。
-```
-
-### 多 Agent 编排
-
-```text
-查询所有产品的信息，然后生成一份markdown文档保存下来。
-根据知识库介绍Sagent项目，并生成一份总结文档。
+生成一份关于产品介绍的报告文档。
 ```
 
 ### GSKILL 通用技能
@@ -417,6 +410,15 @@ What does WHO recommend to reduce dementia risk?
 ```text
 第一轮：介绍一下 NASA 的那篇新闻。
 第二轮：它为什么被重新分类？
+```
+
+### 多 Agent 编排
+
+需要先在聊天页面开启"多Agent"开关：
+
+```text
+查询所有产品的信息，然后生成一份markdown文档保存下来。
+根据知识库介绍Sagent项目，并生成一份总结文档。
 ```
 
 ## 自动化测试
