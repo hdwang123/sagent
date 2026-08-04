@@ -318,7 +318,7 @@ mvn test
 - ASKILL 审批机制：带 `@Approval(enable=true)` 注解的方法通过 AOP 切面拦截，自动创建 PENDING 记录并返回等待人工审批；查询类方法（`getMyApprovals`、`checkApprovalById`）无需审批直接放行
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
 
-## 附录：多 Agent 编排（演示版）
+## 附录 1：多 Agent 编排
 
 多 Agent 编排是独立于单 Agent 路由的实验性功能，作为功能演示单独介绍。它不改变原有的消息分类机制——前端通过"多Agent"开关选择走 `/ai/multi-agent`，普通入口仍走 `/ai/chat` 单 Agent 路由。
 
