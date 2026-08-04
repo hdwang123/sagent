@@ -1,6 +1,9 @@
 package com.example.sagent.agent.skills;
 
+import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.storage.DownloadStorage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -35,9 +38,29 @@ public class WebPageDownloadSkill implements Skill {
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
 
     private final DownloadStorage downloadStorage;
+    private final ObjectMapper objectMapper;
 
-    public WebPageDownloadSkill(DownloadStorage downloadStorage) {
+    public WebPageDownloadSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper) {
         this.downloadStorage = downloadStorage;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 将业务结果序列化为 {@link AgentResult} JSON 字符串。
+     * 所有 {@code @Tool(returnDirect = true)} 方法统一通过此方法返回，
+     * 保证返回结构一致（{@code {"code":..., "content":...}}），
+     * 由 Handler 层反序列化后提取 code 与 content。
+     *
+     * @param code    业务状态码（200=成功，4xx=业务失败，5xx=技术错误）
+     * @param content 回答正文
+     * @return AgentResult 的 JSON 字符串
+     */
+    private String toAgentResultJson(int code, String content) {
+        try {
+            return objectMapper.writeValueAsString(new AgentResult(code, content));
+        } catch (JsonProcessingException e) {
+            return "{\"code\":" + code + ",\"content\":\"序列化失败\"}";
+        }
     }
 
     @Override
@@ -100,11 +123,11 @@ public class WebPageDownloadSkill implements Skill {
         String result = downloadMediaFromWebPage(url, folderName, this::extractImageUrls, "image_", ".jpg", "图片", dynamic);
 
         if (compress) {
-            compressFiles(folderName, folderName + "_images");
-            return result + "\n\n图片已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_images.zip";
+            String zipUrl = compressToUrl(folderName, folderName + "_images");
+            result = result + "\n\n图片已压缩，下载链接: " + zipUrl;
         }
 
-        return result;
+        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有视频，解析HTML提取video、source标签和a标签中的视频链接，将视频保存到output目录，可选择是否压缩打包。返回下载的视频数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -117,11 +140,11 @@ public class WebPageDownloadSkill implements Skill {
         String result = downloadMediaFromWebPage(url, folderName, this::extractVideoUrls, "video_", ".mp4", "视频", dynamic);
 
         if (compress) {
-            compressFiles(folderName, folderName + "_videos");
-            return result + "\n\n视频已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_videos.zip";
+            String zipUrl = compressToUrl(folderName, folderName + "_videos");
+            result = result + "\n\n视频已压缩，下载链接: " + zipUrl;
         }
 
-        return result;
+        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有音频，解析HTML提取audio、source标签和a标签中的音频链接，将音频保存到output目录，可选择是否压缩打包。返回下载的音频数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -134,11 +157,11 @@ public class WebPageDownloadSkill implements Skill {
         String result = downloadMediaFromWebPage(url, folderName, this::extractAudioUrls, "audio_", ".mp3", "音频", dynamic);
 
         if (compress) {
-            compressFiles(folderName, folderName + "_audios");
-            return result + "\n\n音频已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_audios.zip";
+            String zipUrl = compressToUrl(folderName, folderName + "_audios");
+            result = result + "\n\n音频已压缩，下载链接: " + zipUrl;
         }
 
-        return result;
+        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有文档，解析HTML提取a标签中的文档链接（.pdf/.doc/.docx/.xls/.xlsx/.ppt/.pptx/.txt/.csv等），将文档保存到output目录，可选择是否压缩打包。返回下载的文档数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -151,11 +174,11 @@ public class WebPageDownloadSkill implements Skill {
         String result = downloadMediaFromWebPage(url, folderName, this::extractDocumentUrls, "document_", ".pdf", "文档", dynamic);
 
         if (compress) {
-            compressFiles(folderName, folderName + "_documents");
-            return result + "\n\n文档已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_documents.zip";
+            String zipUrl = compressToUrl(folderName, folderName + "_documents");
+            result = result + "\n\n文档已压缩，下载链接: " + zipUrl;
         }
 
-        return result;
+        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页的HTML内容，保存为.html文件，并生成一篇Markdown介绍文档，将所有文件保存到output目录，可选择是否压缩打包。返回保存路径和文件列表。dynamic=true时使用浏览器渲染动态页面，适合SPA等JavaScript渲染的网站")
@@ -198,11 +221,11 @@ public class WebPageDownloadSkill implements Skill {
                     mdFileName, downloadStorage.getDownloadBaseUrl() + folderName + "/" + mdFileName);
 
             if (compress) {
-                compressFiles(folderName, folderName + "_content");
-                return result + "\n\n文件已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_content.zip";
+                String zipUrl = compressToUrl(folderName, folderName + "_content");
+                result = result + "\n\n文件已压缩，下载链接: " + zipUrl;
             }
 
-            return result;
+            return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
         } catch (IOException e) {
             throw new RuntimeException("下载网页内容失败: " + e.getMessage(), e);
         }
@@ -245,11 +268,11 @@ public class WebPageDownloadSkill implements Skill {
                         pageTitle, url, downloadStorage.getDownloadBaseUrl() + folderName + "/" + fileName);
 
                 if (compress) {
-                    compressFiles(folderName, folderName + "_screenshot");
-                    return result + "\n\n截图已压缩，下载链接: " + downloadStorage.getDownloadBaseUrl() + folderName + "_screenshot.zip";
+                    String zipUrl = compressToUrl(folderName, folderName + "_screenshot");
+                    result = result + "\n\n截图已压缩，下载链接: " + zipUrl;
                 }
 
-                return result;
+                return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
             }
         } catch (Exception e) {
             throw new RuntimeException("截图失败: " + e.getMessage(), e);
@@ -261,6 +284,30 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "要压缩的源文件夹名称") String sourceFolderName,
             @ToolParam(description = "压缩后的文件名（不含扩展名）") String zipFileName
     ) {
+        // 源文件夹不存在属于业务失败，返回 404 状态码便于编排层判断
+        if (!Files.exists(downloadStorage.getDownloadDir().resolve(sourceFolderName))) {
+            return toAgentResultJson(AgentResult.CODE_NOT_FOUND,
+                    "源文件夹不存在: " + sourceFolderName);
+        }
+        String zipUrl = compressToUrl(sourceFolderName, zipFileName);
+        String result = String.format("压缩完成：\n" +
+                "源文件夹: %s\n" +
+                "压缩文件: %s\n" +
+                "下载链接: %s",
+                sourceFolderName, zipFileName + ".zip", zipUrl);
+        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+    }
+
+    /**
+     * 内部压缩辅助方法：执行实际压缩并返回压缩包下载链接。
+     * 供其他 @Tool(returnDirect=true) 方法在 compress=true 时内部调用，
+     * 避免它们直接调用 compressFiles（其返回值为 AgentResult JSON，无法直接拼接）。
+     *
+     * @param sourceFolderName 源文件夹名称
+     * @param zipFileName      压缩包文件名（不含扩展名）
+     * @return 压缩包下载链接
+     */
+    private String compressToUrl(String sourceFolderName, String zipFileName) {
         validateFolderName(sourceFolderName);
         validateFolderName(zipFileName);
 
@@ -270,9 +317,8 @@ public class WebPageDownloadSkill implements Skill {
         if (!sourcePath.startsWith(downloadStorage.getDownloadDir())) {
             throw new IllegalArgumentException("不允许访问output目录外的路径");
         }
-
         if (!Files.exists(sourcePath)) {
-            return "源文件夹不存在: " + sourceFolderName;
+            throw new IllegalArgumentException("源文件夹不存在: " + sourceFolderName);
         }
 
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipPath.toFile()))) {
@@ -289,12 +335,7 @@ public class WebPageDownloadSkill implements Skill {
                             throw new RuntimeException("压缩文件失败: " + e.getMessage(), e);
                         }
                     });
-
-            return String.format("压缩完成：\n" +
-                    "源文件夹: %s\n" +
-                    "压缩文件: %s\n" +
-                    "下载链接: %s",
-                    sourceFolderName, zipFileName + ".zip", downloadStorage.getDownloadBaseUrl() + zipFileName + ".zip");
+            return downloadStorage.getDownloadBaseUrl() + zipFileName + ".zip";
         } catch (IOException e) {
             throw new RuntimeException("创建压缩文件失败: " + e.getMessage(), e);
         }

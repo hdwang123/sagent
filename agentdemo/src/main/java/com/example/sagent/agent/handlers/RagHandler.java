@@ -143,7 +143,7 @@ public class RagHandler implements AgentHandler {
             return new HandlerResult(answer, sources);
         } catch (Exception e) {
             LOGGER.error("RagHandler处理失败", e);
-            return new HandlerResult("知识库检索失败：" + e.getMessage(), List.of(), true);
+            return new HandlerResult("知识库检索失败：" + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
         }
     }
 

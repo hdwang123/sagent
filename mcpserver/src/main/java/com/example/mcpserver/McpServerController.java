@@ -9,8 +9,27 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * MCP 工具服务器
+ * <p>
+ * 所有工具返回 Map 统一包含 {@code code} 字段：
+ * <ul>
+ *   <li>200：业务成功</li>
+ *   <li>400：业务失败（如参数非法、资源不存在）</li>
+ *   <li>500：技术错误（如除零等异常场景）</li>
+ * </ul>
+ * 与 agentdemo 侧 {@link com.example.sagent.agent.model.AgentResult} 保持一致，
+ * 便于编排层（MultiAgentService）基于 code 做业务校验。
+ */
 @Component
 public class McpServerController {
+
+    /** 成功状态码 */
+    private static final int CODE_SUCCESS = 200;
+    /** 业务失败状态码 */
+    private static final int CODE_BAD_REQUEST = 400;
+    /** 技术错误状态码 */
+    private static final int CODE_INTERNAL_ERROR = 500;
 
     @McpTool(name = "calculator", description = "计算器工具，支持加减乘除运算")
     public Map<String, Object> calculator(
@@ -25,16 +44,19 @@ public class McpServerController {
             case "multiply" -> answer = num1 * num2;
             case "divide" -> {
                 if (num2 == 0) {
-                    result.put("error", "除数不能为0");
+                    result.put("code", CODE_INTERNAL_ERROR);
+                    result.put("message", "除数不能为0");
                     return result;
                 }
                 answer = num1 / num2;
             }
             default -> {
-                result.put("error", "不支持的运算类型: " + operation);
+                result.put("code", CODE_BAD_REQUEST);
+                result.put("message", "不支持的运算类型: " + operation);
                 return result;
             }
         }
+        result.put("code", CODE_SUCCESS);
         result.put("result", answer);
         result.put("expression", num1 + " " + operation + " " + num2);
         return result;
@@ -53,6 +75,7 @@ public class McpServerController {
 
         Double temp = temperatures.get(city);
         if (temp != null) {
+            result.put("code", CODE_SUCCESS);
             result.put("city", city);
             result.put("temperature", temp);
             result.put("unit", "°C");
@@ -60,7 +83,8 @@ public class McpServerController {
             result.put("humidity", "65%");
             result.put("wind", "东北风 3级");
         } else {
-            result.put("error", "暂不支持该城市: " + city);
+            result.put("code", CODE_BAD_REQUEST);
+            result.put("message", "暂不支持该城市: " + city);
             result.put("supported_cities", temperatures.keySet());
         }
         return result;
@@ -81,13 +105,15 @@ public class McpServerController {
 
         Double price = prices.get(symbol.toUpperCase());
         if (price != null) {
+            result.put("code", CODE_SUCCESS);
             result.put("symbol", symbol.toUpperCase());
             result.put("price", price);
             result.put("currency", "USD");
             result.put("change", "+2.35%");
             result.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         } else {
-            result.put("error", "暂不支持该股票: " + symbol);
+            result.put("code", CODE_BAD_REQUEST);
+            result.put("message", "暂不支持该股票: " + symbol);
             result.put("supported_symbols", prices.keySet());
         }
         return result;
@@ -96,6 +122,7 @@ public class McpServerController {
     @McpTool(name = "get_system_info", description = "获取系统信息")
     public Map<String, Object> getSystemInfo() {
         Map<String, Object> result = new HashMap<>();
+        result.put("code", CODE_SUCCESS);
         result.put("os_name", System.getProperty("os.name"));
         result.put("os_version", System.getProperty("os.version"));
         result.put("java_version", System.getProperty("java.version"));

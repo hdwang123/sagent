@@ -71,7 +71,7 @@ public class ChatHandler implements AgentHandler {
             return new HandlerResult(answer);
         } catch (Exception e) {
             LOGGER.error("ChatHandler处理失败", e);
-            return new HandlerResult("聊天处理失败：" + e.getMessage(), List.of(), true);
+            return new HandlerResult("聊天处理失败：" + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
         }
     }
 }

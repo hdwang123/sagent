@@ -855,7 +855,7 @@
 
                     assistantMessage.content = body.answer || "模型返回了空响应";
                     this.conversationId = body.conversationId || this.conversationId;
-                    if (body.error) {
+                    if (body.code && body.code >= 400) {
                         assistantMessage.error = true;
                     }
                     if (this.multiAgentMode) {

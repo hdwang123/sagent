@@ -28,9 +28,11 @@ public record AgentResponse(
          */
         List<String> sources,
         /**
-         * 是否执行失败
+         * 业务状态码，与 {@link HandlerResult#code()} 语义一致：
+         * 200=成功，4xx=业务失败，5xx=技术错误。
+         * 替代旧版 boolean error 字段，前端可据此展示错误样式。
          */
-        boolean error
+        int code
 ) {
 
     /**

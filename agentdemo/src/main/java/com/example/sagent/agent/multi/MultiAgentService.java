@@ -289,7 +289,7 @@ public class MultiAgentService {
      * 只负责标记失败，不从pending移除——readyEmpty 调用后直接break无需移除，
      * 方案E 调用后由调用方自行removeIf以继续循环。
      *
-     * @param results  子任务结果（写入失败结果，error=true）
+     * @param results  子任务结果（写入失败结果，code=500）
      * @param taskById id -> Task 映射，用于查goal作为可读标签
      * @param ids      需标记失败的任务id集合
      * @param reason   失败原因（拼入结果文本）
@@ -299,7 +299,7 @@ public class MultiAgentService {
         for (String id : ids) {
             Task t = taskById.get(id);
             String label = t == null ? id : t.goal();
-            results.put(id, new HandlerResult("子任务[" + label + "]" + reason, List.of(), true));
+            results.put(id, new HandlerResult("子任务[" + label + "]" + reason, List.of(), HandlerResult.CODE_ERROR));
         }
     }
 
@@ -329,7 +329,7 @@ public class MultiAgentService {
                             : "子任务执行失败：" + root.getMessage();
                     LOGGER.error("子Agent[{}] {}", task.type(), msg, root);
                     return Map.entry(task.id(), new HandlerResult(
-                            "子任务[" + task.goal() + "]" + msg, List.of(), true));
+                            "子任务[" + task.goal() + "]" + msg, List.of(), HandlerResult.CODE_ERROR));
                 });
     }
 
@@ -373,7 +373,7 @@ public class MultiAgentService {
                 LOGGER.warn("子Agent[{}]第{}次执行返回错误，将重试: {}", task.type(), attempt, result.answer());
             } catch (Exception ex) {
                 LOGGER.error("子Agent[{}]第{}次执行异常: {}", task.type(), attempt, ex.getMessage(), ex);
-                lastResult = new HandlerResult("执行异常：" + ex.getMessage(), List.of(), true);
+                lastResult = new HandlerResult("执行异常：" + ex.getMessage(), List.of(), HandlerResult.CODE_ERROR);
             }
         }
         LOGGER.warn("子Agent[{}]重试{}次后仍失败", task.type(), MAX_RETRY);

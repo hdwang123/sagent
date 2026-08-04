@@ -58,7 +58,7 @@ public class ChatController {
                 null,
                 "multi-agent",
                 result.sources(),
-                result.error()
+                result.code()
         );
     }
 

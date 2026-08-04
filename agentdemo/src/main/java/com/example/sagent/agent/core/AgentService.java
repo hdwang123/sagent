@@ -52,7 +52,7 @@ public class AgentService {
                     decision.type(),
                     decision.reason(),
                     java.util.List.of(),
-                    true
+                    HandlerResult.CODE_ERROR
             );
         }
         if (handler.type() != decision.type()) {
@@ -65,7 +65,7 @@ public class AgentService {
                 decision.type(),
                 decision.reason(),
                 result.sources(),
-                result.error()
+                result.code()
         );
     }
 

@@ -1,9 +1,11 @@
 package com.example.sagent.agent.handlers;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.model.AgentResultParser;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.skills.Skill;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -32,16 +34,19 @@ public class SkillHandler implements AgentHandler {
 
     private final ChatClient chatClient;
     private final List<Skill> skills;
+    private final ObjectMapper objectMapper;
 
     public SkillHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
-            List<Skill> skills
+            List<Skill> skills,
+            ObjectMapper objectMapper
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
                 .build();
         this.skills = skills;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -52,7 +57,7 @@ public class SkillHandler implements AgentHandler {
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
-            String answer = chatClient.prompt()
+            String raw = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user(message)
                     .tools(skills.toArray())
@@ -63,10 +68,10 @@ public class SkillHandler implements AgentHandler {
                     .call()
                     .content();
 
-            return new HandlerResult(answer);
+            return AgentResultParser.toHandlerResult(objectMapper, raw);
         } catch (Exception e) {
             LOGGER.error("SkillHandler处理失败", e);
-            return new HandlerResult("技能执行失败：" + e.getMessage(), List.of(), true);
+            return new HandlerResult("技能执行失败：" + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.sagent.agent.handlers;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.skills.GSkill;
@@ -32,7 +33,22 @@ public class GSkillHandler implements AgentHandler {
             必须调用提供的技能工具完成任务，不能自行编造结果。
             【重要】每次查询数据库操作都必须重新调用工具获取最新数据，不能使用对话历史中的旧数据。
             如果现有技能无法满足需求，请明确说明当前支持的技能范围。
-            使用中文简洁回答，并说明已执行的操作。
+
+            【输出要求】调用工具并汇总结果后，必须输出如下 JSON 格式的结构化结果：
+            {"code": 200, "content": "对用户问题的最终回答"}
+            其中 code 取值约定：
+            - 200：任务执行成功
+            - 404：数据或资源不存在（如查询无结果）
+            - 400：业务校验失败（如参数非法）
+            - 500：工具执行出现技术错误
+            如果工具返回了失败或错误，必须如实反映 code 和失败原因，不能伪造成功。
+
+            【content 编写规则】content 是直接展示给用户的回答文本，必须满足：
+            - 将工具返回的数据用中文自然语言整理成可读描述，如"共找到 2 款产品：1. iPhone 15，售价 5999 元，库存 120 件；2. ..."
+            - 严禁将工具返回的原始 JSON、转义字符串（如 {"id":3,"name":"..."}）原样放入 content
+            - 错误示例：{"code":200,"content":"{\"id\":3,\"name\":\"iPhone 15\"}"}
+            - 正确示例：{"code":200,"content":"已查询到产品：iPhone 15，售价 5999 元，库存 120 件。"}
+            - 简洁明了，说明已执行的操作和关键结果。
             """;
 
     private final ChatClient chatClient;
@@ -76,7 +92,7 @@ public class GSkillHandler implements AgentHandler {
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
-            String answer = chatClient.prompt()
+            AgentResult result = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user(message)
                     .tools(skills.toArray())
@@ -85,12 +101,15 @@ public class GSkillHandler implements AgentHandler {
                             conversationId
                     ))
                     .call()
-                    .content();
+                    .entity(AgentResult.class);
 
-            return new HandlerResult(answer);
+            if (result == null) {
+                return new HandlerResult("", List.of(), HandlerResult.CODE_SUCCESS);
+            }
+            return new HandlerResult(result.content(), List.of(), result.code());
         } catch (Exception e) {
             LOGGER.error("GSkillHandler处理失败", e);
-            return new HandlerResult("通用技能执行失败：" + e.getMessage(), List.of(), true);
+            return new HandlerResult("通用技能执行失败：" + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.sagent.agent.handlers;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import io.modelcontextprotocol.client.McpClient;
@@ -32,7 +33,21 @@ public class McpHandler implements AgentHandler {
             你是MCP工具执行助手，可以调用MCP服务器提供的工具完成任务。
             必须调用提供的MCP工具完成任务，不能自行编造结果。
             如果现有工具无法满足需求，请明确说明当前支持的工具范围。
-            使用中文简洁回答，并说明已执行的操作。
+
+            【输出要求】调用工具并汇总结果后，必须输出如下 JSON 格式的结构化结果：
+            {"code": 200, "content": "对用户问题的最终回答"}
+            其中 code 取值约定：
+            - 200：任务执行成功
+            - 404：数据或资源不存在
+            - 400：业务校验失败（如参数非法）
+            - 500：工具执行出现技术错误
+            如果工具返回的 code 为 400/404/500，必须如实反映到最终 code 并说明失败原因，不能伪造成功。
+
+            【content 编写规则】content 是直接展示给用户的回答文本：
+            - 用中文自然语言整理工具返回的数据，严禁将原始 JSON 或转义字符串原样放入 content
+            - 错误示例：{"code":200,"content":"{\"id\":3,\"name\":\"iPhone 15\"}"}
+            - 正确示例：{"code":200,"content":"北京市当前天气：晴，25℃，空气质量良。"}
+            - 简洁明了，说明已执行的操作和关键结果。
             """;
 
     private final ChatClient chatClient;
@@ -75,7 +90,7 @@ public class McpHandler implements AgentHandler {
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
-            String answer = chatClient.prompt()
+            AgentResult result = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user(message)
                     .tools(getMcpToolCallbackProvider().getToolCallbacks())
@@ -84,11 +99,15 @@ public class McpHandler implements AgentHandler {
                             conversationId
                     ))
                     .call()
-                    .content();
-            return new HandlerResult(answer);
+                    .entity(AgentResult.class);
+
+            if (result == null) {
+                return new HandlerResult("", List.of(), HandlerResult.CODE_SUCCESS);
+            }
+            return new HandlerResult(result.content(), List.of(), result.code());
         } catch (Exception e) {
             LOGGER.warn("MCP调用失败: {}", e.getMessage());
-            return new HandlerResult("MCP服务连接失败: " + e.getMessage(), List.of(), true);
+            return new HandlerResult("MCP服务连接失败: " + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
         }
     }
 }
