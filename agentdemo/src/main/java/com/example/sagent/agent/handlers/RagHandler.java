@@ -2,6 +2,7 @@ package com.example.sagent.agent.handlers;
 
 import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.memory.ConversationHistory;
+import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.tools.VectorKnowledgeRetriever;
@@ -140,7 +141,9 @@ public class RagHandler implements AgentHandler {
                     .map(VectorKnowledgeRetriever.KnowledgeHit::source)
                     .distinct()
                     .toList();
-            return new HandlerResult(answer, sources);
+            // P1-5: 检索为空时返回 404（业务失败），让编排层能识别 RAG 软失败而非当作成功
+            int code = sources.isEmpty() ? AgentResult.CODE_NOT_FOUND : HandlerResult.CODE_SUCCESS;
+            return new HandlerResult(answer, sources, code);
         } catch (Exception e) {
             LOGGER.error("RagHandler处理失败", e);
             return new HandlerResult("知识库检索失败：" + e.getMessage(), List.of(), HandlerResult.CODE_ERROR);
