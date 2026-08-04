@@ -2,13 +2,13 @@
 
 Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
 
-用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 DeepSeek 调用，Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 OpenAI 兼容接口调用（默认 OpenRouter，可切换 DeepSeek），Embedding 模型在本地 JVM 中运行。
 
 ## 功能特性
 
 - **智能消息分类**：支持 `CHAT`、`ASKILL`、`RAG`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
-- **统一结构化返回**：所有 Handler 统一返回 `AgentResult(code, content)` 结构，业务状态码可被编排层（MultiAgentService）使用
-- **普通聊天**：基于 DeepSeek 的多轮对话能力
+- **统一结构化返回**：所有 Handler 统一返回 `HandlerResult(answer, sources, code)` 结构，业务状态码可被编排层（`MultiAgentService`）使用；工具/LLM 中间结果使用 `AgentResult(code, content)` 结构化模型承载
+- **普通聊天**：基于 OpenAI 兼容接口的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **SKILL 企业固定技能**：提示词引导单次调用单一工具（仍走工具调用循环，仅约束 LLM 一次只选一个工具）
   - `WebPageDownloadSkill`：网页下载处理（截图、下载内容、下载媒体、压缩打包）
@@ -36,7 +36,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 | JDK | 21 |
 | Spring Boot | 4.1.0 |
 | Spring AI | 2.0.0 |
-| DeepSeek | OpenAI 兼容聊天接口 |
+| OpenRouter / DeepSeek | OpenAI 兼容聊天接口（默认 OpenRouter，可切换） |
 | Transformers | 本地运行 ONNX Embedding |
 | SimpleVectorStore | 内存向量库 |
 | H2 | 内存数据库 |
@@ -79,13 +79,15 @@ src/main/java/com/example/sagent
 ├─ agent
 │  ├─ core          Agent 核心调度层
 │  │  ├─ AgentHandler      处理器接口
+│  │  ├─ HandlerRegistry   处理器注册中心（EnumMap<AgentType, AgentHandler>）
 │  │  └─ AgentService      Agent 服务（消息路由）
 │  ├─ approval      审批系统
 │  │  ├─ Approval.java               @Approval 注解
 │  │  ├─ ApprovalAspect.java         @Aspect 切面拦截
 │  │  ├─ ApprovalService.java        审批核心服务
+│  │  ├─ ApprovalRepository.java     审批记录查询仓库
 │  │  ├─ ApprovalBypass.java         ThreadLocal 绕过标志
-│  │  ├─ ToolRegistry.java           工具注册表
+│  │  ├─ ToolRegistry.java           工具注册表（审批通过后重新调用原始工具）
 │  │  └─ UserIdResolver.java         用户 ID 解析器
 │  ├─ handlers      Agent 处理器实现
 │  │  ├─ ChatHandler       普通聊天处理器
@@ -95,15 +97,18 @@ src/main/java/com/example/sagent
 │  │  ├─ GSkillHandler     GSKILL 通用技能处理器
 │  │  └─ McpHandler        MCP 外部服务处理器
 │  ├─ skills        技能实现
-│  │  ├─ ASkill            ASKILL 接口
-│  │  ├─ ApprovalSqlSkill    审批 SQL 技能（ASKILL）
-│  │  ├─ ApprovalContext     审批上下文（ThreadLocal）
 │  │  ├─ Skill             SKILL 接口
 │  │  ├─ GSkill            GSKILL 接口
+│  │  ├─ ASkill            ASKILL 接口
+│  │  ├─ ToolDescriptor    工具描述接口（供消息分类动态生成工具列表）
 │  │  ├─ DataBaseSkill     数据库查询技能（GSKILL）
 │  │  ├─ WebPageDownloadSkill  网页下载技能（SKILL）
 │  │  ├─ DocumentSkill         文档生成/读取技能（SKILL）
-│  │  └─ AlarmSkill            闹钟技能（GSKILL）
+│  │  ├─ AlarmSkill            闹钟技能（GSKILL）
+│  │  ├─ ApprovalSqlSkill    审批 SQL 技能（ASKILL）
+│  │  └─ ApprovalContext     审批上下文（ThreadLocal）
+│  ├─ storage       文件存储
+│  │  └─ DownloadStorage   下载文件输出目录与URL前缀统一管理
 │  ├─ tools         工具类
 │  │  └─ VectorKnowledgeRetriever  向量知识库检索器
 │  ├─ memory        会话记忆
@@ -145,13 +150,21 @@ src/main/resources
 
 - JDK 21
 - Maven 3.9+
-- DeepSeek API Key
+- OpenRouter API Key（或切换 DeepSeek 后使用 DeepSeek API Key）
 
 不需要安装 Ollama、Python、Node.js、MySQL 或 Redis。
 
-### 配置 DeepSeek
+### 配置模型服务（OpenRouter）
 
-必须设置环境变量：
+项目默认使用 OpenRouter 调用大模型，必须设置环境变量：
+
+```text
+OPENROUTER_API_KEY
+```
+
+可通过 `OPENROUTER_MODEL` 指定模型（默认 `openrouter/free`）。
+
+**切换 DeepSeek**：将 `application.yml` 中 `spring.ai.openai` 配置的 OpenRouter 部分注释掉，取消 DeepSeek 部分注释，然后设置：
 
 ```text
 DEEPSEEK_API_KEY
@@ -184,7 +197,7 @@ MCP Server 地址通过 `mcp.server.url` 配置（默认 `http://localhost:8081/
 **Windows PowerShell**：
 
 ```powershell
-$env:DEEPSEEK_API_KEY = "你的真实Key"
+$env:OPENROUTER_API_KEY = "你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -192,7 +205,7 @@ mvn spring-boot:run
 **macOS / Linux**：
 
 ```bash
-export DEEPSEEK_API_KEY="你的真实Key"
+export OPENROUTER_API_KEY="你的真实Key"
 cd agentdemo
 mvn spring-boot:run
 ```
@@ -233,7 +246,7 @@ http://localhost:8080/chat.html
 ### RAG 知识库查询
 
 ```text
-DEEPSEEK_API_KEY 在哪里配置？
+OPENROUTER_API_KEY 在哪里配置？
 Why was 1998 SH2 reclassified as a comet?
 What does WHO recommend to reduce dementia risk?
 ```
@@ -296,16 +309,6 @@ What does WHO recommend to reduce dementia risk?
 根据知识库介绍Sagent项目，并生成一份总结文档。
 ```
 
-## 自动化测试
-
-```bash
-mvn test
-```
-
-测试覆盖：
-- 消息分类器测试
-- 向量知识库检索器测试
-
 ## 注意事项
 
 - 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空
@@ -313,7 +316,7 @@ mvn test
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库查询走 GSKILL/DataBaseSkill，删除和修改操作需通过 ASKILL/ApprovalSqlSkill 审批后方可执行
 - SKILL 生成的文件保存在系统临时目录（`%TEMP%/sagent-downloads/`），应用重启后会清空
-- 工具注册采用 Spring AI 原生 `ToolCallback` 机制（`ToolCallbacks.from()` + `StaticToolCallbackResolver`），参数类型转换（含泛型 JSON 反序列化）由框架自动完成，无需手写反射转换
+- 审批自动执行：`ToolRegistry` 使用 Spring AI 原生 `ToolCallback` 机制（`ToolCallbacks.from()` + `StaticToolCallbackResolver`）注册 ASkill Bean 的 `@Tool` 方法，审批通过后通过 `ToolCallback.call()` 重新唤起原始工具，参数类型转换（含泛型 JSON 反序列化）由框架自动完成
 - MCP 客户端采用延迟初始化：不注册为 Spring Bean，由 `McpHandler` 在首次 MCP 请求时手动创建连接，避免启动时因 MCP Server 未就绪而导致应用启动失败。若连接失败会返回友好提示，不会阻塞其他功能
 - ASKILL 审批机制：带 `@Approval(enable=true)` 注解的方法通过 AOP 切面拦截，自动创建 PENDING 记录并返回等待人工审批；查询类方法（`getMyApprovals`、`checkApprovalById`）无需审批直接放行
 - 这是学习和功能验证项目，生产环境还需要鉴权、限流、持久化和安全审查
