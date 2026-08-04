@@ -65,21 +65,15 @@ public class MultiAgentService {
         LOGGER.info("多Agent编排耗时: plan={}ms, execute={}ms, aggregate={}ms, total={}ms",
                 planMs, executeMs, aggregateMs, planMs + executeMs + aggregateMs);
 
-        // 4. 兜底：从子任务结果中提取下载链接，确保汇总遗漏时用户仍能下载
-        List<String> downloadLinks = aggregator.extractDownloadLinks(results);
+        // 4. 整轮编排的 code：任一子任务失败则标记为 error，前端可据此展示
+        //    下载链接不在编排层特化兜底，统一由 Aggregator 提示词强制保留 +
+        //    异常时 fallback 拼接子任务原文保证（与单 Agent 路径一致）
+        int code = results.values().stream().anyMatch(HandlerResult::error)
+                ? HandlerResult.CODE_ERROR : HandlerResult.CODE_SUCCESS;
         List<String> sources = results.values().stream()
                 .flatMap(r -> r.sources().stream())
                 .distinct()
                 .toList();
-        if (!downloadLinks.isEmpty()) {
-            String linkSection = "\n\n**下载链接：**\n" + String.join("\n", downloadLinks);
-            if (!answer.contains("/files/download/")) {
-                answer = answer + linkSection;
-            }
-        }
-        // 整轮编排的 code：任一子任务失败则标记为 error，前端可据此展示
-        int code = results.values().stream().anyMatch(HandlerResult::error)
-                ? HandlerResult.CODE_ERROR : HandlerResult.CODE_SUCCESS;
         return new HandlerResult(answer, sources, code);
     }
 }

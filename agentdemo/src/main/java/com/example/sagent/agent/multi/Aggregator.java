@@ -7,9 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -30,10 +28,6 @@ public class Aggregator {
 
             {subResults}
             """;
-
-    /** 下载链接提取正则（static final 避免每次重编译，P0-3） */
-    private static final Pattern DOWNLOAD_LINK_PATTERN =
-            Pattern.compile("(/files/download/[^\\s，。！？、；：）)}\\]]+)");
 
     private final ChatClient aggregateClient;
 
@@ -89,21 +83,5 @@ public class Aggregator {
                     return "## " + label + "\n" + e.getValue().answer();
                 })
                 .collect(Collectors.joining("\n\n"));
-    }
-
-    /**
-     * 从子任务结果中提取所有下载链接，用于兜底附加到汇总回答末尾。
-     * 使用 static final Pattern 避免每次重编译（P0-3）。
-     *
-     * @param results 子任务结果
-     * @return 去重后的下载链接列表
-     */
-    public List<String> extractDownloadLinks(Map<String, HandlerResult> results) {
-        return results.values().stream()
-                .map(r -> r.answer() == null ? "" : r.answer())
-                .flatMap(answer -> DOWNLOAD_LINK_PATTERN.matcher(answer).results()
-                        .map(m -> m.group(1)))
-                .distinct()
-                .toList();
     }
 }
