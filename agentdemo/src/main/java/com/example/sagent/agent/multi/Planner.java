@@ -176,7 +176,7 @@ public class Planner {
      * @param plan LLM输出的原始计划
      * @return 校验/修复后的计划
      */
-    private TaskPlan validateAndFixPlan(TaskPlan plan) {
+    TaskPlan validateAndFixPlan(TaskPlan plan) {
         List<Task> tasks = plan.tasks();
         // 1. id 去重：保留首次出现的，重复的跳过
         Set<String> seen = new HashSet<>();
@@ -213,7 +213,7 @@ public class Planner {
     /**
      * 环检测：Kahn 算法（拓扑排序）。若拓扑排序处理不完所有节点，说明存在环。
      */
-    private boolean hasCycle(List<Task> tasks) {
+    boolean hasCycle(List<Task> tasks) {
         if (tasks.isEmpty()) {
             return false;
         }

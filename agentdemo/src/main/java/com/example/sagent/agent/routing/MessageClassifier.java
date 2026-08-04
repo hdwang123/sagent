@@ -7,6 +7,8 @@ import com.example.sagent.agent.skills.ASkill;
 import com.example.sagent.agent.skills.GSkill;
 import com.example.sagent.agent.skills.Skill;
 import com.example.sagent.agent.skills.ToolDescriptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class MessageClassifier {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MessageClassifier.class);
 
     /**
      * 分类提示词模板
@@ -86,6 +90,7 @@ public class MessageClassifier {
     }
 
     public RouteDecision classify(String conversationId, String message) {
+        long start = System.nanoTime();
         try {
             String history = conversationHistory.format(conversationId);
             String classificationInput = history.isBlank()
@@ -105,11 +110,17 @@ public class MessageClassifier {
                     .entity(RouteDecision.class, spec -> spec.validateSchema());
 
             if (decision == null || decision.type() == null) {
+                long ms = (System.nanoTime() - start) / 1_000_000;
+                LOGGER.warn("消息分类返回空, 耗时={}ms, 降级为CHAT", ms);
                 return fallbackDecision();
             }
 
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            LOGGER.info("消息分类耗时: {}ms, type={}, reason={}", ms, decision.type(), decision.reason());
             return decision;
         } catch (RuntimeException exception) {
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            LOGGER.warn("消息分类异常, 耗时={}ms, 降级为CHAT: {}", ms, exception.getMessage());
             return fallbackDecision();
         }
     }

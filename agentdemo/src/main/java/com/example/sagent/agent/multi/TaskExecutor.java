@@ -265,7 +265,7 @@ public class TaskExecutor {
     /**
      * 构建子任务goal：若声明了依赖，将依赖任务的执行结果拼入goal，供子Agent参考。
      */
-    private String buildGoalWithDeps(Task task, Map<String, HandlerResult> results, Map<String, Task> taskById) {
+    String buildGoalWithDeps(Task task, Map<String, HandlerResult> results, Map<String, Task> taskById) {
         String goal = task.goal();
         List<String> depIds = task.dependsOn() == null ? List.of() : task.dependsOn();
         if (depIds.isEmpty()) {

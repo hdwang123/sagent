@@ -41,7 +41,10 @@ public class AgentService {
      * @return AgentResponse响应结果
      */
     public AgentResponse ask(String conversationId, String message) {
+        long start = System.nanoTime();
         RouteDecision decision = classifier.classify(conversationId, message);
+        long classifyMs = (System.nanoTime() - start) / 1_000_000;
+
         AgentHandler handler = handlerRegistry.getOrDefault(decision.type(), handlerRegistry.get(AgentType.CHAT));
         if (handler == null) {
             // 极端情况：分类器返回了未注册类型且CHAT也未注册，直接返回错误而非抛500
@@ -58,7 +61,13 @@ public class AgentService {
         if (handler.type() != decision.type()) {
             LOGGER.warn("未注册处理器[{}]，降级为普通聊天", decision.type());
         }
+        start = System.nanoTime();
         HandlerResult result = handler.handle(conversationId, message);
+        long handleMs = (System.nanoTime() - start) / 1_000_000;
+
+        LOGGER.info("单Agent路由耗时: classify={}ms, handle[{}]={}ms, total={}ms",
+                classifyMs, decision.type(), handleMs, classifyMs + handleMs);
+
         return new AgentResponse(
                 conversationId,
                 result.answer(),
