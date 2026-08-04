@@ -116,18 +116,18 @@ public class Planner {
      * 方案B：失败触发重新规划。基于已完成结果、失败原因和剩余任务，让Planner重新规划剩余任务。
      */
     public List<Task> replan(String message, Map<String, HandlerResult> results,
-                              Set<String> failedIds, List<Task> pending, Map<String, Task> taskById) {
+                              Set<String> failedIds, List<Task> pending, TaskPlan plan) {
         String doneTasks = results.entrySet().stream()
                 .filter(e -> !failedIds.contains(e.getKey()))
                 .map(e -> {
-                    Task t = taskById.get(e.getKey());
+                    Task t = plan.taskById().get(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "id=" + e.getKey() + ", goal=" + label + ", 结果=" + e.getValue().answer();
                 })
                 .collect(Collectors.joining("\n"));
         String failedTasks = failedIds.stream()
                 .map(id -> {
-                    Task t = taskById.get(id);
+                    Task t = plan.taskById().get(id);
                     String label = t == null ? id : t.goal();
                     return "id=" + id + ", goal=" + label + ", 失败原因=" + results.get(id).answer();
                 })

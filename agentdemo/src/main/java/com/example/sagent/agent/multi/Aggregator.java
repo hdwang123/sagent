@@ -2,6 +2,7 @@ package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
+import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -42,13 +43,13 @@ public class Aggregator {
      *
      * @param message  原始用户请求
      * @param results  子任务结果
-     * @param taskById id -> Task 映射，用于查goal作为可读标签
+     * @param plan     任务计划（提供 id→Task 索引，用于查goal作为可读标签）
      * @return 汇总后的最终回答（非 null）
      */
-    public String aggregate(String message, Map<String, HandlerResult> results, Map<String, Task> taskById) {
+    public String aggregate(String message, Map<String, HandlerResult> results, TaskPlan plan) {
         String subResults = results.entrySet().stream()
                 .map(e -> {
-                    Task t = taskById.get(e.getKey());
+                    Task t = plan.taskById().get(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "任务: " + label + "\n结果: " + e.getValue().answer();
                 })
@@ -63,22 +64,22 @@ public class Aggregator {
                     .content();
             if (answer == null || answer.isBlank()) {
                 LOGGER.warn("汇总Agent返回空，降级为拼接子任务结果");
-                return fallbackAnswer(results, taskById);
+                return fallbackAnswer(results, plan);
             }
             return answer;
         } catch (Exception e) {
             LOGGER.error("汇总Agent执行异常，降级为拼接子任务结果", e);
-            return fallbackAnswer(results, taskById);
+            return fallbackAnswer(results, plan);
         }
     }
 
     /**
      * 降级回答：直接拼接子任务结果原文，保证不返回 null
      */
-    private String fallbackAnswer(Map<String, HandlerResult> results, Map<String, Task> taskById) {
+    private String fallbackAnswer(Map<String, HandlerResult> results, TaskPlan plan) {
         return results.entrySet().stream()
                 .map(e -> {
-                    Task t = taskById.get(e.getKey());
+                    Task t = plan.taskById().get(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "## " + label + "\n" + e.getValue().answer();
                 })

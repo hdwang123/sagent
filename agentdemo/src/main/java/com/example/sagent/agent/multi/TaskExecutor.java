@@ -5,6 +5,7 @@ import com.example.sagent.agent.core.HandlerRegistry;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
+import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -83,18 +84,16 @@ public class TaskExecutor {
      * 出现循环依赖或依赖id不存在时，剩余任务标记失败跳过，不盲目执行。
      *
      * @param conversationId 会话ID
-     * @param tasks          子任务列表
-     * @param taskById       id -> Task 映射，供 runSubAgent 按依赖id查goal描述
+     * @param plan           任务计划（含 tasks 与可变 id→Task 索引，重新规划时直接更新 plan.taskById()）
      * @param message        原始用户消息（供重新规划使用）
      * @return 子任务id -> 执行结果
      */
-    public Map<String, HandlerResult> execute(String conversationId, List<Task> tasks,
-                                                Map<String, Task> taskById, String message) {
+    public Map<String, HandlerResult> execute(String conversationId, TaskPlan plan, String message) {
         Map<String, HandlerResult> results = new LinkedHashMap<>();
-        List<Task> pending = new ArrayList<>(tasks);
+        List<Task> pending = new ArrayList<>(plan.tasks());
         int replanCount = 0;
         int wave = 0;
-        LOGGER.info("Executor启动: 共{}个子任务待执行", tasks.size());
+        LOGGER.info("Executor启动: 共{}个子任务待执行", plan.tasks().size());
 
         while (!pending.isEmpty()) {
             wave++;
@@ -108,7 +107,7 @@ public class TaskExecutor {
                 // 死锁防护：存在循环依赖或依赖指向不存在的任务id，剩余任务永远无法满足依赖。
                 LOGGER.warn("依赖无法满足（循环依赖或依赖id不存在），剩余任务标记失败跳过: {}",
                         pending.stream().map(t -> t.id() + ":" + t.goal()).toList());
-                markFailed(results, taskById,
+                markFailed(results, plan,
                         pending.stream().map(Task::id).collect(Collectors.toSet()),
                         "因依赖无法满足而跳过（循环依赖或依赖id不存在）");
                 break;
@@ -118,7 +117,7 @@ public class TaskExecutor {
 
             // 本轮并行执行：每个子任务加超时与异常兜底
             List<CompletableFuture<Map.Entry<String, HandlerResult>>> futures = ready.stream()
-                    .map(task -> scheduleTask(conversationId, task, results, taskById))
+                    .map(task -> scheduleTask(conversationId, task, results, plan))
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             futures.forEach(f -> {
@@ -141,13 +140,13 @@ public class TaskExecutor {
                         replanCount++;
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
                                 failedIds.size(), replanCount, MAX_REPLAN);
-                        List<Task> newTasks = planner.replan(message, results, failedIds, pending, taskById);
-                        // P0-2: 清理失败任务的旧 id，避免 LLM 复用 id 时 taskById 污染
-                        failedIds.forEach(taskById::remove);
+                        List<Task> newTasks = planner.replan(message, results, failedIds, pending, plan);
+                        // P0-2: 清理失败任务的旧 id，避免 LLM 复用 id 时索引污染
+                        failedIds.forEach(plan.taskById()::remove);
                         pending.clear();
                         pending.addAll(newTasks);
                         for (Task t : newTasks) {
-                            taskById.put(t.id(), t);
+                            plan.taskById().put(t.id(), t);
                         }
                         LOGGER.info("重新规划完成: 新增{}个任务, 剩余pending={}个", newTasks.size(), pending.size());
                         continue;
@@ -169,7 +168,7 @@ public class TaskExecutor {
                             }
                         }
                     }
-                    markFailed(results, taskById, toFail, "因依赖任务失败而止损跳过");
+                    markFailed(results, plan, toFail, "因依赖任务失败而止损跳过");
                     pending.removeIf(t -> toFail.contains(t.id()));
                     LOGGER.info("止损完成: 跳过{}个依赖失败链任务, 剩余pending={}个", toFail.size(), pending.size());
                 }
@@ -184,9 +183,9 @@ public class TaskExecutor {
      * 止损公共逻辑：把指定id集合的子任务标记为失败（写入error结果）。
      */
     private void markFailed(Map<String, HandlerResult> results,
-                            Map<String, Task> taskById, Set<String> ids, String reason) {
+                            TaskPlan plan, Set<String> ids, String reason) {
         for (String id : ids) {
-            Task t = taskById.get(id);
+            Task t = plan.taskById().get(id);
             String label = t == null ? id : t.goal();
             results.put(id, new HandlerResult("子任务[" + label + "]" + reason, List.of(), HandlerResult.CODE_ERROR));
         }
@@ -197,9 +196,9 @@ public class TaskExecutor {
      */
     private CompletableFuture<Map.Entry<String, HandlerResult>> scheduleTask(
             String conversationId, Task task,
-            Map<String, HandlerResult> results, Map<String, Task> taskById) {
+            Map<String, HandlerResult> results, TaskPlan plan) {
         return CompletableFuture.supplyAsync(
-                        () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, taskById)),
+                        () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, plan)),
                         executor)
                 .orTimeout(SUB_AGENT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .exceptionally(ex -> {
@@ -221,8 +220,8 @@ public class TaskExecutor {
      * P1-4: 4xx 业务失败（如资源不存在）重试无意义，直接返回；仅 5xx 技术错误才重试。
      */
     private HandlerResult runSubAgent(String conversationId, Task task,
-                                      Map<String, HandlerResult> results, Map<String, Task> taskById) {
-        String baseGoal = buildGoalWithDeps(task, results, taskById);
+                                      Map<String, HandlerResult> results, TaskPlan plan) {
+        String baseGoal = buildGoalWithDeps(task, results, plan);
         HandlerResult lastResult = null;
         int maxAttempts = 1 + MAX_RETRY;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -265,7 +264,7 @@ public class TaskExecutor {
     /**
      * 构建子任务goal：若声明了依赖，将依赖任务的执行结果拼入goal，供子Agent参考。
      */
-    String buildGoalWithDeps(Task task, Map<String, HandlerResult> results, Map<String, Task> taskById) {
+    String buildGoalWithDeps(Task task, Map<String, HandlerResult> results, TaskPlan plan) {
         String goal = task.goal();
         List<String> depIds = task.dependsOn() == null ? List.of() : task.dependsOn();
         if (depIds.isEmpty()) {
@@ -274,7 +273,7 @@ public class TaskExecutor {
         List<String> depBlocks = depIds.stream()
                 .filter(results::containsKey)
                 .map(depId -> {
-                    Task depTask = taskById.get(depId);
+                    Task depTask = plan.taskById().get(depId);
                     String depGoal = depTask == null ? depId : depTask.goal();
                     return "【依赖任务：" + depGoal + "】\n" + results.get(depId).answer();
                 })

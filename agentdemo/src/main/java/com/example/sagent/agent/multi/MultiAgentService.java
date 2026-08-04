@@ -1,16 +1,13 @@
 package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.model.HandlerResult;
-import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 多Agent编排服务（演示版）
@@ -43,23 +40,19 @@ public class MultiAgentService {
      */
     public HandlerResult handle(String conversationId, String message) {
         // 1. Planner拆解任务（含多轮记忆 + 图校验，计划详情由 plan() 内部输出日志）
+        //    taskById 索引封装在 TaskPlan 内，不再单独构造与传递
         long start = System.nanoTime();
         TaskPlan plan = planner.plan(conversationId, message);
         long planMs = (System.nanoTime() - start) / 1_000_000;
 
-        // id -> Task 映射，供 execute/aggregate 按id查goal描述
-        Map<String, Task> taskById = plan.tasks().stream()
-                .collect(Collectors.toMap(Task::id, t -> t, (a, b) -> a, LinkedHashMap::new));
-
         // 2. Executor按依赖执行（结果以子任务id为键），Executor内部直接调Planner重新规划
         start = System.nanoTime();
-        Map<String, HandlerResult> results = taskExecutor.execute(
-                conversationId, plan.tasks(), taskById, message);
+        Map<String, HandlerResult> results = taskExecutor.execute(conversationId, plan, message);
         long executeMs = (System.nanoTime() - start) / 1_000_000;
 
         // 3. 汇总Agent生成最终回答（含try-catch兜底，不会返回null）
         start = System.nanoTime();
-        String answer = aggregator.aggregate(message, results, taskById);
+        String answer = aggregator.aggregate(message, results, plan);
         long aggregateMs = (System.nanoTime() - start) / 1_000_000;
 
         LOGGER.info("多Agent编排耗时: plan={}ms, execute={}ms, aggregate={}ms, total={}ms",
