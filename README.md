@@ -42,89 +42,6 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 | H2 | 内存数据库 |
 | Vue 2 / Element UI | 聊天页面 |
 
-## LLM 返回解析机制
-
-系统中有三种 LLM 返回解析模式，对应不同的 Handler 场景：
-
-| 解析模式 | 适用 Handler | 工具类型 | 解析方式 | 代码示例 |
-| --- | --- | --- | --- | --- |
-| **① returnDirect 透传** | SKILL（SkillHandler） | `@Tool(returnDirect=true)` | 工具方法直接返回 `AgentResult` 的 JSON 字符串，Handler 通过 `AgentResultParser` 手动反序列化提取 `code` 和 `content` | `DocumentSkill` 返回 `{"code":200,"content":"下载链接..."}` → `SkillHandler` 解析 |
-| **② entity 结构化输出** | GSKILL / ASKILL / MCP | `@Tool`（无 returnDirect） | LLM 调用工具汇总后，通过 `.entity(AgentResult.class)` 强制输出结构化 JSON，由 Spring AI `BeanOutputConverter` 自动反序列化 | `chatClient.prompt().call().entity(AgentResult.class)` → `GSkillHandler` 获取 `AgentResult` 对象 |
-| **③ 自然语言输出** | CHAT / RAG | 无工具调用 | LLM 直接生成自然语言文本，默认 `code=200`，异常时 `code=500` | `chatClient.prompt().call().content()` → `ChatHandler` / `RagHandler` |
-
-### AgentResult 状态码约定
-
-| 状态码 | 含义 | 使用场景 |
-| --- | --- | --- |
-| 200 | 业务成功 | 正常完成 |
-| 400 | 业务校验失败 | 参数非法、业务规则不满足 |
-| 404 | 资源不存在 | 查询无结果、数据未找到 |
-| 500 | 技术错误 | 工具执行异常、外部服务不可达 |
-
-### 各模式详细说明
-
-**① returnDirect 透传（SKILL）**
-
-`SKILL` 场景下工具方法标记 `@Tool(returnDirect = true)`，工具返回值会被 Spring AI 直接作为最终回复文本，不经过 LLM 二次处理。因此工具方法直接返回 `AgentResult` 的 JSON 字符串：
-
-```java
-// DocumentSkill.java
-@Tool(returnDirect = true)
-public String generateMarkdownDocument(...) {
-    return "{\"code\":200,\"content\":\"文档已生成，下载链接：...\"}";
-}
-```
-
-`SkillHandler` 通过 `AgentResultParser` 手动反序列化：
-
-```java
-// SkillHandler.java
-String raw = chatClient.prompt().call().content();
-return AgentResultParser.toHandlerResult(objectMapper, raw);
-```
-
-**② entity 结构化输出（GSKILL / ASKILL / MCP）**
-
-`GSKILL`、`ASKILL`、`MCP` 场景下 LLM 需要调用多个工具并汇总结果，使用 `.entity(AgentResult.class)` 强制 LLM 输出结构化 JSON：
-
-```java
-// GSkillHandler.java
-AgentResult result = chatClient.prompt()
-    .system(SYSTEM_PROMPT)  // prompt 中要求输出 {code, content} JSON
-    .user(message)
-    .tools(skills.toArray())
-    .call()
-    .entity(AgentResult.class);
-
-return new HandlerResult(result.content(), List.of(), result.code());
-```
-
-SYSTEM_PROMPT 中明确要求：
-- content 是展示给用户的自然语言文本，禁止将工具返回的原始 JSON 嵌套进 content
-- 必须如实反映工具的业务失败状态（code），不能伪造成功
-
-**③ 自然语言输出（CHAT / RAG）**
-
-`CHAT` 和 `RAG` 场景不调用工具，LLM 直接生成自然语言回复，`code` 恒为 200：
-
-```java
-// ChatHandler.java
-String answer = chatClient.prompt().call().content();
-return new HandlerResult(answer);  // 默认 code=200
-```
-
-### McpServer 工具返回格式
-
-MCP Server 的工具返回 Map 时也遵循统一状态码规范：
-
-```java
-// McpServerController.java
-Map<String, Object> result = new HashMap<>();
-result.put("code", 200);      // 成功
-result.put("message", "计算完成");
-result.put("result", 471);
-```
-
 ## 工作流程
 
 ```mermaid
@@ -619,6 +536,89 @@ Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdv
 **应用只需**：
 - 通过 `.tools()` 注册工具对象
 - 使用 `@Tool` 注解定义可调用方法
+
+## 附录：LLM 返回解析机制
+
+系统中有三种 LLM 返回解析模式，对应不同的 Handler 场景：
+
+| 解析模式 | 适用 Handler | 工具类型 | 解析方式 | 代码示例 |
+| --- | --- | --- | --- | --- |
+| **① returnDirect 透传** | SKILL（SkillHandler） | `@Tool(returnDirect=true)` | 工具方法直接返回 `AgentResult` 的 JSON 字符串，Handler 通过 `AgentResultParser` 手动反序列化提取 `code` 和 `content` | `DocumentSkill` 返回 `{"code":200,"content":"下载链接..."}` → `SkillHandler` 解析 |
+| **② entity 结构化输出** | GSKILL / ASKILL / MCP | `@Tool`（无 returnDirect） | LLM 调用工具汇总后，通过 `.entity(AgentResult.class)` 强制输出结构化 JSON，由 Spring AI `BeanOutputConverter` 自动反序列化 | `chatClient.prompt().call().entity(AgentResult.class)` → `GSkillHandler` 获取 `AgentResult` 对象 |
+| **③ 自然语言输出** | CHAT / RAG | 无工具调用 | LLM 直接生成自然语言文本，默认 `code=200`，异常时 `code=500` | `chatClient.prompt().call().content()` → `ChatHandler` / `RagHandler` |
+
+### AgentResult 状态码约定
+
+| 状态码 | 含义 | 使用场景 |
+| --- | --- | --- |
+| 200 | 业务成功 | 正常完成 |
+| 400 | 业务校验失败 | 参数非法、业务规则不满足 |
+| 404 | 资源不存在 | 查询无结果、数据未找到 |
+| 500 | 技术错误 | 工具执行异常、外部服务不可达 |
+
+### 各模式详细说明
+
+**① returnDirect 透传（SKILL）**
+
+`SKILL` 场景下工具方法标记 `@Tool(returnDirect = true)`，工具返回值会被 Spring AI 直接作为最终回复文本，不经过 LLM 二次处理。因此工具方法直接返回 `AgentResult` 的 JSON 字符串：
+
+```java
+// DocumentSkill.java
+@Tool(returnDirect = true)
+public String generateMarkdownDocument(...) {
+    return "{\"code\":200,\"content\":\"文档已生成，下载链接：...\"}";
+}
+```
+
+`SkillHandler` 通过 `AgentResultParser` 手动反序列化：
+
+```java
+// SkillHandler.java
+String raw = chatClient.prompt().call().content();
+return AgentResultParser.toHandlerResult(objectMapper, raw);
+```
+
+**② entity 结构化输出（GSKILL / ASKILL / MCP）**
+
+`GSKILL`、`ASKILL`、`MCP` 场景下 LLM 需要调用多个工具并汇总结果，使用 `.entity(AgentResult.class)` 强制 LLM 输出结构化 JSON：
+
+```java
+// GSkillHandler.java
+AgentResult result = chatClient.prompt()
+    .system(SYSTEM_PROMPT)  // prompt 中要求输出 {code, content} JSON
+    .user(message)
+    .tools(skills.toArray())
+    .call()
+    .entity(AgentResult.class);
+
+return new HandlerResult(result.content(), List.of(), result.code());
+```
+
+SYSTEM_PROMPT 中明确要求：
+- content 是展示给用户的自然语言文本，禁止将工具返回的原始 JSON 嵌套进 content
+- 必须如实反映工具的业务失败状态（code），不能伪造成功
+
+**③ 自然语言输出（CHAT / RAG）**
+
+`CHAT` 和 `RAG` 场景不调用工具，LLM 直接生成自然语言回复，`code` 恒为 200：
+
+```java
+// ChatHandler.java
+String answer = chatClient.prompt().call().content();
+return new HandlerResult(answer);  // 默认 code=200
+```
+
+### McpServer 工具返回格式
+
+MCP Server 的工具返回 Map 时也遵循统一状态码规范：
+
+```java
+// McpServerController.java
+Map<String, Object> result = new HashMap<>();
+result.put("code", 200);      // 成功
+result.put("message", "计算完成");
+result.put("result", 471);
+```
 
 ## License
 
