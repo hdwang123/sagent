@@ -1,9 +1,9 @@
 package com.example.sagent.agent.skills;
 
 import com.example.sagent.agent.model.AgentResult;
+import com.example.sagent.agent.model.AgentResultParser;
 import com.example.sagent.agent.storage.DownloadStorage;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -43,24 +43,6 @@ public class WebPageDownloadSkill implements Skill {
     public WebPageDownloadSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper) {
         this.downloadStorage = downloadStorage;
         this.objectMapper = objectMapper;
-    }
-
-    /**
-     * 将业务结果序列化为 {@link AgentResult} JSON 字符串。
-     * 所有 {@code @Tool(returnDirect = true)} 方法统一通过此方法返回，
-     * 保证返回结构一致（{@code {"code":..., "content":...}}），
-     * 由 Handler 层反序列化后提取 code 与 content。
-     *
-     * @param code    业务状态码（200=成功，4xx=业务失败，5xx=技术错误）
-     * @param content 回答正文
-     * @return AgentResult 的 JSON 字符串
-     */
-    private String toAgentResultJson(int code, String content) {
-        try {
-            return objectMapper.writeValueAsString(new AgentResult(code, content));
-        } catch (JsonProcessingException e) {
-            return "{\"code\":" + code + ",\"content\":\"序列化失败\"}";
-        }
     }
 
     @Override
@@ -127,7 +109,7 @@ public class WebPageDownloadSkill implements Skill {
             result = result + "\n\n图片已压缩，下载链接: " + zipUrl;
         }
 
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有视频，解析HTML提取video、source标签和a标签中的视频链接，将视频保存到output目录，可选择是否压缩打包。返回下载的视频数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -144,7 +126,7 @@ public class WebPageDownloadSkill implements Skill {
             result = result + "\n\n视频已压缩，下载链接: " + zipUrl;
         }
 
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有音频，解析HTML提取audio、source标签和a标签中的音频链接，将音频保存到output目录，可选择是否压缩打包。返回下载的音频数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -161,7 +143,7 @@ public class WebPageDownloadSkill implements Skill {
             result = result + "\n\n音频已压缩，下载链接: " + zipUrl;
         }
 
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页中的所有文档，解析HTML提取a标签中的文档链接（.pdf/.doc/.docx/.xls/.xlsx/.ppt/.pptx/.txt/.csv等），将文档保存到output目录，可选择是否压缩打包。返回下载的文档数量和下载链接。dynamic=true时使用浏览器渲染动态页面")
@@ -178,7 +160,7 @@ public class WebPageDownloadSkill implements Skill {
             result = result + "\n\n文档已压缩，下载链接: " + zipUrl;
         }
 
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
     }
 
     @Tool(returnDirect = true, description = "下载指定网页的HTML内容，保存为.html文件，并生成一篇Markdown介绍文档，将所有文件保存到output目录，可选择是否压缩打包。返回保存路径和文件列表。dynamic=true时使用浏览器渲染动态页面，适合SPA等JavaScript渲染的网站")
@@ -225,7 +207,7 @@ public class WebPageDownloadSkill implements Skill {
                 result = result + "\n\n文件已压缩，下载链接: " + zipUrl;
             }
 
-            return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+            return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
         } catch (IOException e) {
             throw new RuntimeException("下载网页内容失败: " + e.getMessage(), e);
         }
@@ -272,7 +254,7 @@ public class WebPageDownloadSkill implements Skill {
                     result = result + "\n\n截图已压缩，下载链接: " + zipUrl;
                 }
 
-                return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+                return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
             }
         } catch (Exception e) {
             throw new RuntimeException("截图失败: " + e.getMessage(), e);
@@ -286,7 +268,7 @@ public class WebPageDownloadSkill implements Skill {
     ) {
         // 源文件夹不存在属于业务失败，返回 404 状态码便于编排层判断
         if (!Files.exists(downloadStorage.getDownloadDir().resolve(sourceFolderName))) {
-            return toAgentResultJson(AgentResult.CODE_NOT_FOUND,
+            return AgentResultParser.toJson(objectMapper,AgentResult.CODE_NOT_FOUND,
                     "源文件夹不存在: " + sourceFolderName);
         }
         String zipUrl = compressToUrl(sourceFolderName, zipFileName);
@@ -295,7 +277,7 @@ public class WebPageDownloadSkill implements Skill {
                 "压缩文件: %s\n" +
                 "下载链接: %s",
                 sourceFolderName, zipFileName + ".zip", zipUrl);
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, result);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, result);
     }
 
     /**

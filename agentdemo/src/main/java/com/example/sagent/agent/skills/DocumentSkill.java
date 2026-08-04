@@ -1,9 +1,9 @@
 package com.example.sagent.agent.skills;
 
 import com.example.sagent.agent.model.AgentResult;
+import com.example.sagent.agent.model.AgentResultParser;
 import com.example.sagent.agent.storage.DownloadStorage;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -67,25 +67,6 @@ public class DocumentSkill implements Skill {
     }
 
     /**
-     * 将业务结果序列化为 {@link AgentResult} JSON 字符串。
-     * 所有 {@code @Tool(returnDirect = true)} 方法统一通过此方法返回，
-     * 保证返回结构一致（{@code {"code":..., "content":...}}），
-     * 由 Handler 层反序列化后提取 code 与 content。
-     *
-     * @param code    业务状态码（200=成功，4xx=业务失败，5xx=技术错误）
-     * @param content 回答正文
-     * @return AgentResult 的 JSON 字符串
-     */
-    private String toAgentResultJson(int code, String content) {
-        try {
-            return objectMapper.writeValueAsString(new AgentResult(code, content));
-        } catch (JsonProcessingException e) {
-            // 极端情况下序列化失败，回退为最简 JSON 字面量，保证返回结构仍是 {code, content}
-            return "{\"code\":" + code + ",\"content\":\"序列化失败\"}";
-        }
-    }
-
-    /**
      * 生成Markdown文档
      * 将用户提供的标题和正文内容保存为.md文件到output目录，返回下载链接
      */
@@ -122,7 +103,7 @@ public class DocumentSkill implements Skill {
                 "文件名: %s.md\n" +
                 "下载链接: %s",
                 title, safeFileName, downloadStorage.getDownloadBaseUrl() + safeFileName + ".md");
-        return toAgentResultJson(AgentResult.CODE_SUCCESS, resultText);
+        return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS, resultText);
     }
 
     /**
@@ -144,14 +125,14 @@ public class DocumentSkill implements Skill {
                     "文件不存在: %s，请先使用generateMarkdownDocument生成该文档，或通过listFiles确认可用的文件列表",
                     safeFileName);
             // 资源不存在属于业务失败，使用 404 码便于编排层判断
-            return toAgentResultJson(AgentResult.CODE_NOT_FOUND, notFound);
+            return AgentResultParser.toJson(objectMapper,AgentResult.CODE_NOT_FOUND, notFound);
         }
         try {
             String content = Files.readString(filePath, StandardCharsets.UTF_8);
             if (content.length() > MAX_READ_CHARS) {
                 content = content.substring(0, MAX_READ_CHARS) + "\n...(内容过长，已截断)";
             }
-            return toAgentResultJson(AgentResult.CODE_SUCCESS,
+            return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS,
                     String.format("文件内容（%s）：\n%s", safeFileName, content));
         } catch (IOException e) {
             throw new RuntimeException("读取文档失败: " + e.getMessage(), e);

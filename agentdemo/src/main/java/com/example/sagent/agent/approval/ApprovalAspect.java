@@ -2,8 +2,8 @@ package com.example.sagent.agent.approval;
 
 import com.example.sagent.agent.model.ApprovalRecord;
 import com.example.sagent.agent.skills.ApprovalContext;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;

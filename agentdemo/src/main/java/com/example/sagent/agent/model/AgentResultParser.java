@@ -1,6 +1,6 @@
 package com.example.sagent.agent.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -63,5 +63,21 @@ public final class AgentResultParser {
             return new HandlerResult(result.content(), List.of(), result.code());
         }
         return new HandlerResult(raw == null ? "" : raw, List.of(), HandlerResult.CODE_SUCCESS);
+    }
+
+    /**
+     * 将 AgentResult 序列化为 JSON 字符串，供 {@code @Tool(returnDirect = true)} 工具方法统一返回。
+     *
+     * @param objectMapper Jackson 序列化器
+     * @param code         业务状态码
+     * @param content      回答正文
+     * @return {@code {"code":...,"content":"..."}} JSON 字符串
+     */
+    public static String toJson(ObjectMapper objectMapper, int code, String content) {
+        try {
+            return objectMapper.writeValueAsString(new AgentResult(code, content));
+        } catch (tools.jackson.core.JacksonException e) {
+            return "{\"code\":" + code + ",\"content\":\"序列化失败\"}";
+        }
     }
 }
