@@ -49,9 +49,9 @@ public class MultiAgentService {
         Map<String, Task> taskById = plan.tasks().stream()
                 .collect(Collectors.toMap(Task::id, t -> t, (a, b) -> a, LinkedHashMap::new));
 
-        // 2. Executor按依赖执行（结果以子任务id为键），传入 planner::replan 作为失败纠偏回调
+        // 2. Executor按依赖执行（结果以子任务id为键），Executor内部直接调Planner重新规划
         Map<String, HandlerResult> results = taskExecutor.execute(
-                conversationId, plan.tasks(), taskById, message, planner::replan);
+                conversationId, plan.tasks(), taskById, message);
 
         // 3. 汇总Agent生成最终回答（含try-catch兜底，不会返回null）
         String answer = aggregator.aggregate(message, results, taskById);

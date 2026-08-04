@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
  * <p>
  * 按依赖关系分波次调度执行子任务，无依赖任务并行执行。
  * 含三层兜底（异常/超时/死锁）与失败纠偏（重试/重新规划/止损）。
- * 重新规划通过 {@link Replanner} 回调触发，与 Planner 解耦。
+ * 重新规划直接调用 {@link Planner}，Executor 持有 Planner 引用。
  */
 @Component
 public class TaskExecutor {
@@ -53,10 +53,12 @@ public class TaskExecutor {
     private static final int MAX_REPLAN = 2;
 
     private final HandlerRegistry handlerRegistry;
+    private final Planner planner;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
-    public TaskExecutor(HandlerRegistry handlerRegistry) {
+    public TaskExecutor(HandlerRegistry handlerRegistry, Planner planner) {
         this.handlerRegistry = handlerRegistry;
+        this.planner = planner;
     }
 
     /**
@@ -84,12 +86,10 @@ public class TaskExecutor {
      * @param tasks          子任务列表
      * @param taskById       id -> Task 映射，供 runSubAgent 按依赖id查goal描述
      * @param message        原始用户消息（供重新规划使用）
-     * @param replanner      重新规划回调，失败纠偏时触发
      * @return 子任务id -> 执行结果
      */
     public Map<String, HandlerResult> execute(String conversationId, List<Task> tasks,
-                                                Map<String, Task> taskById, String message,
-                                                Replanner replanner) {
+                                                Map<String, Task> taskById, String message) {
         Map<String, HandlerResult> results = new LinkedHashMap<>();
         List<Task> pending = new ArrayList<>(tasks);
         int replanCount = 0;
@@ -141,7 +141,7 @@ public class TaskExecutor {
                         replanCount++;
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
                                 failedIds.size(), replanCount, MAX_REPLAN);
-                        List<Task> newTasks = replanner.replan(message, results, failedIds, pending, taskById);
+                        List<Task> newTasks = planner.replan(message, results, failedIds, pending, taskById);
                         // P0-2: 清理失败任务的旧 id，避免 LLM 复用 id 时 taskById 污染
                         failedIds.forEach(taskById::remove);
                         pending.clear();
