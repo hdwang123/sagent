@@ -25,7 +25,7 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 - **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
 - **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图；中文文件名通过 RFC 5987 `filename*` 编码，避免 Tomcat 丢弃含非 ASCII 字符的 `Content-Disposition` 响应头
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
-- **多 Agent 编排**：Planner 拆解任务 → Executor 按依赖并行执行（复用现有 Handler，含异常/超时/死锁兜底 + 失败纠偏：重试/重新规划/止损）→ 汇总 Agent 生成最终回答，支持"查询数据 → 生成文档"等复合任务（详见附录章节）
+- **多 Agent 编排**：Planner 拆解任务（含图校验 + 多轮记忆注入）→ Executor 按依赖并行执行（复用现有 Handler，含异常/超时/死锁兜底 + 失败纠偏：重试/重新规划/止损，4xx 不重试/5xx 才重试）→ 汇总 Agent 生成最终回答（含 try-catch 兜底），支持"查询数据 → 生成文档"等复合任务（详见附录章节）
 - **前端界面**：Vue 2 + Element UI 聊天测试页面
 - **详细响应**：返回路由类型、分类理由和 RAG 来源
 
@@ -126,7 +126,10 @@ src/main/java/com/example/sagent
 │  │  ├─ ApprovalRecord    审批记录（record 类型）
 │  │  └─ Product           产品实体
 │  ├─ multi         多Agent编排
-│  │  └─ MultiAgentService   Planner拆解 → Executor并行执行 → 汇总
+│  │  ├─ MultiAgentService   编排门面（串联 Planner → Executor → Aggregator）
+│  │  ├─ Planner             任务规划（plan/replan + 图校验 + 多轮记忆注入）
+│  │  ├─ TaskExecutor        按依赖分波次执行（调度 + 纠偏 + 止损 + 超时兜底）
+│  │  └─ Aggregator          结果汇总（含 try-catch 兜底 + 下载链接提取）
 │  └─ routing       消息路由
 │     └─ MessageClassifier  消息分类器
 └─ controller       HTTP 接口
@@ -331,14 +334,15 @@ What does WHO recommend to reduce dementia risk?
 flowchart TD
     U2["用户 / chat.html（多Agent开关）"] --> P["POST /ai/multi-agent"]
     P --> PL["Planner：LLM 拆解任务<br/>结构化输出 TaskPlan（Task 列表，每个 Task 带 id）"]
-    PL --> INIT["Executor 初始化<br/>pending = 所有子任务<br/>results = 空"]
+    PL --> VALID["图校验：id 去重 / 悬空依赖过滤 / Kahn 环检测<br/>非法则重拆"]
+    VALID --> INIT["Executor 初始化<br/>pending = 所有子任务<br/>results = 空"]
 
     INIT --> WHILE{"pending 是否为空？"}
     WHILE -- "否" --> FILTER["筛选就绪任务 ready<br/>① dependsOn 为空 → 就绪<br/>② dependsOn 的 id 已在 results → 就绪<br/>③ 其余留待下一波"]
     FILTER --> EMPTY{"ready 是否为空？"}
     EMPTY -- "是（循环依赖/依赖id不存在）" --> FAIL["剩余任务标记为 error 结果<br/>break 退出循环"]
     EMPTY -- "否" --> REMOVE["pending 移除 ready"]
-    REMOVE --> RUN["scheduleTask 线程池并行执行 ready<br/>（独立会话 + 60s 超时 + 异常降级 + 失败重试）"]
+    REMOVE --> RUN["scheduleTask 线程池并行执行 ready<br/>（独立会话 + 60s 超时 + 异常降级 + 5xx 重试/4xx 不重试）"]
     RUN --> INJECT["子Agent 有依赖时<br/>按 id 查依赖结果拼入 goal"]
     INJECT --> JOIN["allOf().join()<br/>等待本波次全部完成"]
     JOIN --> STORE["本波次结果写入 results<br/>key = 子任务 id"]
@@ -389,6 +393,12 @@ flowchart TD
 - 健壮性（三层兜底）：单个子任务异常（try-catch）、超时（60s orTimeout）、死锁（循环依赖/依赖id不存在时剩余任务标记失败跳过）都不会中断整轮编排，统一降级为 error 结果
 - 失败纠偏（递进式）：① 方案A——子任务失败自动重试 1 次，重试时把失败原因拼入 goal 提示换方式；② 方案B——重试仍失败则调 Planner 基于已完成结果和失败原因重新规划剩余任务（最多 2 次，新任务 id 用 r1/r2）；③ 方案E——重新规划次数用完后，递归标记依赖失败链的后续任务止损跳过，不白跑注定无意义的子任务
 - 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
+- Planner 输出后做图校验：检测重复 id、过滤悬空依赖（dependsOn 引用不存在的 id）、Kahn 拓扑排序检测循环依赖，非法计划直接重拆而非送进 execute 白跑
+- 失败重试区分错误类型：5xx（技术错误）触发重试，4xx（业务失败，如查不到数据）不重试直接走重新规划/止损，避免无意义重试
+- 汇总阶段 try-catch 兜底：汇总 LLM 异常或返回空时，降级为拼接子任务结果原文，不会 NPE 或全盘皆输
+- 重新规划后清理失败任务的旧 id，避免 LLM 复用 id 时 taskById 污染
+- Planner 读取主会话历史，多 Agent 模式下连续对话（如"刚才那个产品再生成文档"）上下文不断
+- 线程池 `@PreDestroy` 优雅关闭，应用关停时不丢任务
 
 ## 附录 2：LLM 返回解析机制
 
@@ -398,7 +408,7 @@ flowchart TD
 | --- | --- | --- | --- | --- |
 | **① returnDirect 透传** | SKILL（SkillHandler） | `@Tool(returnDirect=true)` | 工具方法直接返回 `AgentResult` 的 JSON 字符串，Handler 通过 `AgentResultParser` 手动反序列化提取 `code` 和 `content` | `DocumentSkill` 返回 `{"code":200,"content":"下载链接..."}` → `SkillHandler` 解析 |
 | **② entity 结构化输出** | GSKILL / ASKILL / MCP | `@Tool`（无 returnDirect） | LLM 调用工具汇总后，通过 `.entity(AgentResult.class)` 强制输出结构化 JSON，由 Spring AI `BeanOutputConverter` 自动反序列化 | `chatClient.prompt().call().entity(AgentResult.class)` → `GSkillHandler` 获取 `AgentResult` 对象 |
-| **③ 自然语言输出** | CHAT / RAG | 无工具调用 | LLM 直接生成自然语言文本，默认 `code=200`，异常时 `code=500` | `chatClient.prompt().call().content()` → `ChatHandler` / `RagHandler` |
+| **③ 自然语言输出** | CHAT / RAG | 无工具调用 | LLM 直接生成自然语言文本，CHAT 默认 `code=200`；RAG 检索为空时 `code=404`，异常时 `code=500` | `chatClient.prompt().call().content()` → `ChatHandler` / `RagHandler` |
 
 ### AgentResult 状态码约定
 
