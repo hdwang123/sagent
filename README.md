@@ -515,28 +515,6 @@ flowchart TD
 - 失败纠偏（递进式）：① 方案A——子任务失败自动重试 1 次，重试时把失败原因拼入 goal 提示换方式；② 方案B——重试仍失败则调 Planner 基于已完成结果和失败原因重新规划剩余任务（最多 2 次，新任务 id 用 r1/r2）；③ 方案E——重新规划次数用完后，递归标记依赖失败链的后续任务止损跳过，不白跑注定无意义的子任务
 - 汇总阶段强制保留子任务结果中的 `/files/download/` 下载链接，并有正则兜底提取
 
-## 附录：工具调用循环
-
-Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdvisor` 递归顾问，作为顾问链的一部分统一管理。
-
-![工具调用循环](agentdemo/doc/toolCallingLoop.png)
-
-**核心机制**：
-
-1. `ToolCallingAdvisor` 是递归顾问，通过 `callAdvisorChain.copy(this)` 创建子链进行循环调用
-2. `ChatClient` 自动注册 `ToolCallingAdvisor`（默认优先级 `HIGHEST_PRECEDENCE + 300`）
-3. 循环过程：注入工具定义 → 调用LLM → 执行工具 → 回填结果 → **再次调用LLM** → 循环
-4. 停止条件：LLM 返回不含工具调用的最终响应
-
-**关键流程**：
-- 循环的主体是**调用工具**，每次循环都会调用LLM来决定是否继续调用工具
-- 每次工具调用后，结果会追加到对话历史，然后**再次调用LLM**
-- 最终LLM根据所有工具结果，生成自然语言回复给用户
-
-**应用只需**：
-- 通过 `.tools()` 注册工具对象
-- 使用 `@Tool` 注解定义可调用方法
-
 ## 附录：LLM 返回解析机制
 
 系统中有三种 LLM 返回解析模式，对应不同的 Handler 场景：
@@ -619,6 +597,28 @@ result.put("code", 200);      // 成功
 result.put("message", "计算完成");
 result.put("result", 471);
 ```
+
+## 附录：工具调用循环
+
+Spring AI 2.0 将工具调用循环从 ChatModel 内部抽取为 `ToolCallingAdvisor` 递归顾问，作为顾问链的一部分统一管理。
+
+![工具调用循环](agentdemo/doc/toolCallingLoop.png)
+
+**核心机制**：
+
+1. `ToolCallingAdvisor` 是递归顾问，通过 `callAdvisorChain.copy(this)` 创建子链进行循环调用
+2. `ChatClient` 自动注册 `ToolCallingAdvisor`（默认优先级 `HIGHEST_PRECEDENCE + 300`）
+3. 循环过程：注入工具定义 → 调用LLM → 执行工具 → 回填结果 → **再次调用LLM** → 循环
+4. 停止条件：LLM 返回不含工具调用的最终响应
+
+**关键流程**：
+- 循环的主体是**调用工具**，每次循环都会调用LLM来决定是否继续调用工具
+- 每次工具调用后，结果会追加到对话历史，然后**再次调用LLM**
+- 最终LLM根据所有工具结果，生成自然语言回复给用户
+
+**应用只需**：
+- 通过 `.tools()` 注册工具对象
+- 使用 `@Tool` 注解定义可调用方法
 
 ## License
 
