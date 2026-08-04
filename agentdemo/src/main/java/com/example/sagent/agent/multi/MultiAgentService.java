@@ -4,6 +4,10 @@ import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,11 +28,14 @@ public class MultiAgentService {
     private final Planner planner;
     private final TaskExecutor taskExecutor;
     private final Aggregator aggregator;
+    private final ChatMemory multiAgentChatMemory;
 
-    public MultiAgentService(Planner planner, TaskExecutor taskExecutor, Aggregator aggregator) {
+    public MultiAgentService(Planner planner, TaskExecutor taskExecutor, Aggregator aggregator,
+                             @Qualifier("multiAgentChatMemory") ChatMemory multiAgentChatMemory) {
         this.planner = planner;
         this.taskExecutor = taskExecutor;
         this.aggregator = aggregator;
+        this.multiAgentChatMemory = multiAgentChatMemory;
     }
 
     /**
@@ -67,6 +74,11 @@ public class MultiAgentService {
                 .flatMap(r -> r.sources().stream())
                 .distinct()
                 .toList();
+        // 5. 写入多Agent独立会话记忆，形成多轮闭环（Planner下一轮可读到本轮编排结果）
+        multiAgentChatMemory.add(conversationId, List.of(
+                new UserMessage(message),
+                new AssistantMessage(answer)
+        ));
         return new HandlerResult(answer, sources, code);
     }
 }

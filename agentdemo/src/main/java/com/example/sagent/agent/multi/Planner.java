@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -73,10 +75,14 @@ public class Planner {
             """;
 
     private final ChatClient plannerClient;
+    private final ChatMemory multiAgentChatMemory;
     private final ConversationHistory conversationHistory;
 
-    public Planner(ChatClient.Builder chatClientBuilder, ConversationHistory conversationHistory) {
+    public Planner(ChatClient.Builder chatClientBuilder,
+                   @Qualifier("multiAgentChatMemory") ChatMemory multiAgentChatMemory,
+                   ConversationHistory conversationHistory) {
         this.plannerClient = chatClientBuilder.build();
+        this.multiAgentChatMemory = multiAgentChatMemory;
         this.conversationHistory = conversationHistory;
     }
 
@@ -90,8 +96,8 @@ public class Planner {
      * @return 校验后的任务计划
      */
     public TaskPlan plan(String conversationId, String message) {
-        // P3-12: 拼入会话历史，让Planner理解多轮上下文
-        String history = conversationHistory.format(conversationId);
+        // P3-12: 拼入多Agent独立会话历史，让Planner理解多轮上下文（与单Agent的chatMemory隔离）
+        String history = conversationHistory.format(multiAgentChatMemory.get(conversationId));
         String userInput = (history == null || history.isBlank())
                 ? message
                 : "【会话历史】\n" + history + "\n\n【当前请求】\n" + message;

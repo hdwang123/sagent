@@ -34,7 +34,18 @@ public class ConversationHistory {
      * @return 格式化后的会话历史字符串
      */
     public String format(String conversationId) {
-        return chatMemory.get(conversationId).stream()
+        return format(chatMemory.get(conversationId));
+    }
+
+    /**
+     * 格式化指定消息列表为会话历史字符串。
+     * 供使用独立ChatMemory的场景（如多Agent编排）复用格式化逻辑，避免重复代码。
+     *
+     * @param messages 消息列表
+     * @return 格式化后的会话历史字符串
+     */
+    public String format(List<Message> messages) {
+        return messages.stream()
                 .map(this::formatMessage)
                 .collect(Collectors.joining("\n"));
     }

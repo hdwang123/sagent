@@ -7,6 +7,7 @@ import com.example.sagent.agent.model.TaskPlan;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 
 import java.util.List;
 
@@ -29,7 +30,7 @@ class PlannerGraphValidationTest {
         ChatClient.Builder mockBuilder = mock(ChatClient.Builder.class);
         when(mockBuilder.build()).thenReturn(mock(ChatClient.class));
         ConversationHistory mockHistory = mock(ConversationHistory.class);
-        planner = new Planner(mockBuilder, mockHistory);
+        planner = new Planner(mockBuilder, mock(ChatMemory.class), mockHistory);
     }
 
     // === hasCycle ===

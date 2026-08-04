@@ -68,4 +68,18 @@ public class ChatMemoryConfiguration {
     MessageChatMemoryAdvisor toolChatMemoryAdvisor(ChatMemory toolChatMemory) {
         return MessageChatMemoryAdvisor.builder(toolChatMemory).build();
     }
+
+    /**
+     * 多Agent编排专用会话记忆（独立于单Agent的chatMemory，不混用）。
+     * <p>
+     * 用作多Agent多轮会话的单独演示：Planner读取历史理解上下文指代，
+     * MultiAgentService编排完成后写入本轮结果，形成多Agent专属的多轮闭环。
+     * 与单Agent的chatMemory完全隔离，互不干扰。
+     */
+    @Bean
+    ChatMemory multiAgentChatMemory() {
+        return MessageWindowChatMemory.builder()
+                .maxMessages(MAX_MESSAGES)
+                .build();
+    }
 }
