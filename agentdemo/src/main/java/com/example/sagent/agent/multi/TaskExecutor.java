@@ -51,10 +51,10 @@ public class TaskExecutor {
     private final ExecutorService executor;
 
     public TaskExecutor(HandlerRegistry handlerRegistry, Planner planner,
-                        @Value("${agent.task-executor.sub-agent-timeout-seconds:60}") long subAgentTimeoutSeconds,
-                        @Value("${agent.task-executor.max-retry:1}") int maxRetry,
-                        @Value("${agent.task-executor.max-replan:2}") int maxReplan,
-                        @Value("${agent.task-executor.thread-pool-size:4}") int threadPoolSize) {
+                        @Value("${agent.multi.sub-agent-timeout-seconds:60}") long subAgentTimeoutSeconds,
+                        @Value("${agent.multi.max-retry:1}") int maxRetry,
+                        @Value("${agent.multi.max-replan:2}") int maxReplan,
+                        @Value("${agent.multi.thread-pool-size:4}") int threadPoolSize) {
         this.handlerRegistry = handlerRegistry;
         this.planner = planner;
         this.subAgentTimeoutSeconds = subAgentTimeoutSeconds;

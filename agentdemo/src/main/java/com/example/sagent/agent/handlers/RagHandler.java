@@ -11,6 +11,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -21,16 +22,9 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * RAG检索处理器
- * 基于知识库内容回答用户问题
- */
 @Component
 public class RagHandler implements AgentHandler {
 
-    /**
-     * RAG系统提示词
-     */
     private static final String RAG_SYSTEM_PROMPT = """
             你是 Sagent 知识库助手。
             仅依据提供的知识库上下文回答问题，不要编造上下文中不存在的事实。
@@ -38,9 +32,6 @@ public class RagHandler implements AgentHandler {
             回答使用中文，并保持简洁。
             """;
 
-    /**
-     * LLM重排序提示词
-     */
     private static final String RERANK_PROMPT = """
             评估以下文档与问题的相关性，为每个文档打分（0-10的整数，10表示最相关）。
             每行输出一个分数，格式为：序号:分数
@@ -53,30 +44,24 @@ public class RagHandler implements AgentHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RagHandler.class);
 
-    private static final int HYBRID_TOP_K = 10;
-    private static final int RERANKED_TOP_K = 3;
-
+    private final int hybridTopK;
+    private final int rerankedTopK;
     private final ChatClient chatClient;
     private final ChatClient rerankClient;
     private final VectorKnowledgeRetriever knowledgeRetriever;
     private final ConversationHistory conversationHistory;
 
-    /**
-     * 构造函数
-     *
-     * @param chatClientBuilder    ChatClient构建器
-     * @param memoryAdvisor        消息聊天记忆顾问
-     * @param knowledgeRetriever   向量知识库检索器
-     * @param conversationHistory  会话历史管理
-     * @param chatModel            聊天模型
-     */
     public RagHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor,
             VectorKnowledgeRetriever knowledgeRetriever,
             ConversationHistory conversationHistory,
-            ChatModel chatModel
+            ChatModel chatModel,
+            @Value("${agent.rag.hybrid-top-k:10}") int hybridTopK,
+            @Value("${agent.rag.reranked-top-k:3}") int rerankedTopK
     ) {
+        this.hybridTopK = hybridTopK;
+        this.rerankedTopK = rerankedTopK;
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor)
                 .build();
@@ -108,10 +93,9 @@ public class RagHandler implements AgentHandler {
             String retrievalQuery = conversationHistory.retrievalQuery(conversationId, message);
 
             // 1. 混合检索：向量 + 关键词，召回 Top-10
-            List<VectorKnowledgeRetriever.KnowledgeHit> hybridHits = knowledgeRetriever.hybridSearch(retrievalQuery, HYBRID_TOP_K);
+            List<VectorKnowledgeRetriever.KnowledgeHit> hybridHits = knowledgeRetriever.hybridSearch(retrievalQuery, hybridTopK);
 
-            // 2. LLM 重排序：精排选出 Top-3
-            List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(message, hybridHits, RERANKED_TOP_K);
+            List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(message, hybridHits, rerankedTopK);
 
             String context = hits.isEmpty()
                     ? "没有检索到相关知识库内容。"

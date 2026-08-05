@@ -4,27 +4,22 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * 会话历史管理类
- * 负责格式化和处理会话历史记录
- */
 @Component
 public class ConversationHistory {
 
     private final ChatMemory chatMemory;
+    private final int retrievalHistoryWindows;
 
-    /**
-     * 构造函数
-     *
-     * @param chatMemory 聊天记忆实例（大窗口，用于对话场景）
-     */
-    public ConversationHistory(@Qualifier("chatMemory") ChatMemory chatMemory) {
+    public ConversationHistory(@Qualifier("chatMemory") ChatMemory chatMemory,
+                               @Value("${agent.rag.retrieval-history-windows:2}") int retrievalHistoryWindows) {
         this.chatMemory = chatMemory;
+        this.retrievalHistoryWindows = retrievalHistoryWindows;
     }
 
     /**
@@ -67,7 +62,7 @@ public class ConversationHistory {
             return currentMessage;
         }
 
-        int startIndex = Math.max(0, previousUserMessages.size() - 2);
+        int startIndex = Math.max(0, previousUserMessages.size() - retrievalHistoryWindows);
         List<String> recentUserMessages = previousUserMessages.subList(
                 startIndex,
                 previousUserMessages.size()

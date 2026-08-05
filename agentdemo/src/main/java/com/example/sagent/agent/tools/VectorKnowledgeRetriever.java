@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -28,33 +29,25 @@ public class VectorKnowledgeRetriever {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(VectorKnowledgeRetriever.class);
 
-    /**
-     * 最大检索结果数
-     */
-    private static final int MAX_RESULTS = 3;
-
-    /**
-     * 相似度阈值
-     */
-    private static final double SIMILARITY_THRESHOLD = 0.1;
-
+    private final int maxResults;
+    private final double similarityThreshold;
     private final VectorStore vectorStore;
     private final List<Document> documents;
 
-    /**
-     * 构造函数
-     * 初始化向量库并加载知识库文档
-     *
-     * @param embeddingModel Embedding模型
-     */
-    public VectorKnowledgeRetriever(EmbeddingModel embeddingModel) {
+    public VectorKnowledgeRetriever(EmbeddingModel embeddingModel,
+                                    @Value("${agent.rag.max-results:3}") int maxResults,
+                                    @Value("${agent.rag.similarity-threshold:0.1}") double similarityThreshold) {
+        this.maxResults = maxResults;
+        this.similarityThreshold = similarityThreshold;
         this.documents = loadDocuments();
         this.vectorStore = SimpleVectorStore.builder(embeddingModel).build();
         this.vectorStore.add(this.documents);
         LOGGER.info(
-                "RAG 向量库初始化完成：embeddingModel={}, documents={}",
+                "RAG 向量库初始化完成：embeddingModel={}, documents={}, maxResults={}, similarityThreshold={}",
                 embeddingModel.getClass().getSimpleName(),
-                this.documents.size()
+                this.documents.size(),
+                maxResults,
+                similarityThreshold
         );
     }
 
@@ -66,14 +59,14 @@ public class VectorKnowledgeRetriever {
      * @return 检索结果列表
      */
     public List<KnowledgeHit> search(String query) {
-        return search(query, MAX_RESULTS);
+        return search(query, maxResults);
     }
 
     public List<KnowledgeHit> search(String query, int topK) {
         SearchRequest request = SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .similarityThreshold(SIMILARITY_THRESHOLD)
+                .similarityThreshold(similarityThreshold)
                 .build();
 
         List<KnowledgeHit> hits = vectorStore.similaritySearch(request).stream()

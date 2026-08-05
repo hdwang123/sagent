@@ -32,13 +32,22 @@ mcp:
     url: http://localhost:8081/mcp
 
 agent:
-  task-executor:
+  multi:
     sub-agent-timeout-seconds: 60
     max-retry: 1
     max-replan: 2
     thread-pool-size: 4
   document-skill:
     max-read-chars: 8000
+  chat-memory:
+    max-messages: 20
+    max-tool-messages: 4
+  rag:
+    max-results: 3
+    similarity-threshold: 0.1
+    hybrid-top-k: 10
+    reranked-top-k: 3
+    retrieval-history-windows: 2
 
 logging:
   level:
