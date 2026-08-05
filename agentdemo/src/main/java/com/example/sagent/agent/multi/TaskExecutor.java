@@ -8,6 +8,7 @@ import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -36,29 +37,30 @@ public class TaskExecutor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
-    /**
-     * 单个子Agent执行超时阈值（秒），超时后整轮编排不再等待该任务，直接返回错误结果
-     */
-    private static final long SUB_AGENT_TIMEOUT_SECONDS = 60L;
+    /** 单个子Agent执行超时阈值（秒），超时后整轮编排不再等待该任务，直接返回错误结果 */
+    private final long subAgentTimeoutSeconds;
 
-    /**
-     * 单个子任务失败后的重试次数（不含首次执行），重试时把上次失败原因拼入goal提示模型换种方式。
-     * 仅对 5xx 技术错误重试，4xx 业务失败（如资源不存在）重试无意义直接返回（P1-4）。
-     */
-    private static final int MAX_RETRY = 1;
+    /** 单个子任务失败后的重试次数（不含首次执行），仅对 5xx 技术错误重试 */
+    private final int maxRetry;
 
-    /**
-     * 失败后允许重新规划的最大次数，用完后改为依赖止损（跳过受影响的后续任务）
-     */
-    private static final int MAX_REPLAN = 2;
+    /** 失败后允许重新规划的最大次数，用完后改为依赖止损（跳过受影响的后续任务） */
+    private final int maxReplan;
 
     private final HandlerRegistry handlerRegistry;
     private final Planner planner;
-    private final ExecutorService executor = Executors.newFixedThreadPool(4);
+    private final ExecutorService executor;
 
-    public TaskExecutor(HandlerRegistry handlerRegistry, Planner planner) {
+    public TaskExecutor(HandlerRegistry handlerRegistry, Planner planner,
+                        @Value("${agent.task-executor.sub-agent-timeout-seconds:60}") long subAgentTimeoutSeconds,
+                        @Value("${agent.task-executor.max-retry:1}") int maxRetry,
+                        @Value("${agent.task-executor.max-replan:2}") int maxReplan,
+                        @Value("${agent.task-executor.thread-pool-size:4}") int threadPoolSize) {
         this.handlerRegistry = handlerRegistry;
         this.planner = planner;
+        this.subAgentTimeoutSeconds = subAgentTimeoutSeconds;
+        this.maxRetry = maxRetry;
+        this.maxReplan = maxReplan;
+        this.executor = Executors.newFixedThreadPool(threadPoolSize);
     }
 
     /**
@@ -134,11 +136,11 @@ public class TaskExecutor {
                         .map(Map.Entry::getKey)
                         .collect(Collectors.toSet());
                 if (!failedIds.isEmpty()) {
-                    if (replanCount < MAX_REPLAN) {
+                    if (replanCount < maxReplan) {
                         // 方案B：失败触发重新规划
                         replanCount++;
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
-                                failedIds.size(), replanCount, MAX_REPLAN);
+                                failedIds.size(), replanCount, maxReplan);
                         List<Task> newTasks = planner.replan(message, results, failedIds, pending, plan);
                         // P0-2: 清理失败任务的旧 id，避免 LLM 复用 id 时索引污染
                         failedIds.forEach(plan.taskById()::remove);
@@ -151,7 +153,7 @@ public class TaskExecutor {
                         continue;
                     }
                     // 方案E：重新规划次数用完，依赖失败任务的后续任务注定无意义，止损跳过
-                    LOGGER.warn("重新规划次数用完({})，对依赖失败任务的剩余任务执行止损跳过", MAX_REPLAN);
+                    LOGGER.warn("重新规划次数用完({})，对依赖失败任务的剩余任务执行止损跳过", maxReplan);
                     Set<String> toFail = new HashSet<>();
                     boolean changed = true;
                     while (changed) {
@@ -199,12 +201,12 @@ public class TaskExecutor {
         return CompletableFuture.supplyAsync(
                         () -> Map.entry(task.id(), runSubAgent(conversationId, task, results, plan)),
                         executor)
-                .orTimeout(SUB_AGENT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .orTimeout(subAgentTimeoutSeconds, TimeUnit.SECONDS)
                 .exceptionally(ex -> {
                     Throwable root = (ex instanceof CompletionException && ex.getCause() != null)
                             ? ex.getCause() : ex;
                     String msg = root instanceof TimeoutException
-                            ? "子任务执行超时（>" + SUB_AGENT_TIMEOUT_SECONDS + "s）"
+                            ? "子任务执行超时（>" + subAgentTimeoutSeconds + "s）"
                             : "子任务执行失败：" + root.getMessage();
                     LOGGER.error("子Agent[{}] {}", task.type(), msg, root);
                     return Map.entry(task.id(), new HandlerResult(
@@ -222,7 +224,7 @@ public class TaskExecutor {
                                       Map<String, HandlerResult> results, TaskPlan plan) {
         String baseGoal = buildGoalWithDeps(task, results, plan);
         HandlerResult lastResult = null;
-        int maxAttempts = 1 + MAX_RETRY;
+        int maxAttempts = 1 + maxRetry;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             String goal = baseGoal;
             if (attempt > 1 && lastResult != null) {
@@ -257,7 +259,7 @@ public class TaskExecutor {
                 lastResult = new HandlerResult("执行异常：" + ex.getMessage(), List.of(), HandlerResult.CODE_ERROR);
             }
         }
-        LOGGER.warn("子Agent[{}]重试{}次后仍失败", task.type(), MAX_RETRY);
+        LOGGER.warn("子Agent[{}]重试{}次后仍失败", task.type(), maxRetry);
         return lastResult;
     }
 

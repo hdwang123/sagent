@@ -6,6 +6,7 @@ import com.example.sagent.agent.storage.DownloadStorage;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -24,14 +25,16 @@ public class DocumentSkill implements Skill {
     private static final String DESCRIPTION = "生成Markdown文档、读取文档内容、生成文本文件";
 
     /** 读取文档内容的最大字符数，防止超长文本撑爆上下文 */
-    private static final int MAX_READ_CHARS = 8000;
+    private final int maxReadChars;
 
     private final DownloadStorage downloadStorage;
     private final ObjectMapper objectMapper;
 
-    public DocumentSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper) {
+    public DocumentSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper,
+                         @Value("${agent.document-skill.max-read-chars:8000}") int maxReadChars) {
         this.downloadStorage = downloadStorage;
         this.objectMapper = objectMapper;
+        this.maxReadChars = maxReadChars;
     }
 
     @Override
@@ -129,8 +132,8 @@ public class DocumentSkill implements Skill {
         }
         try {
             String content = Files.readString(filePath, StandardCharsets.UTF_8);
-            if (content.length() > MAX_READ_CHARS) {
-                content = content.substring(0, MAX_READ_CHARS) + "\n...(内容过长，已截断)";
+            if (content.length() > maxReadChars) {
+                content = content.substring(0, maxReadChars) + "\n...(内容过长，已截断)";
             }
             return AgentResultParser.toJson(objectMapper,AgentResult.CODE_SUCCESS,
                     String.format("文件内容（%s）：\n%s", safeFileName, content));

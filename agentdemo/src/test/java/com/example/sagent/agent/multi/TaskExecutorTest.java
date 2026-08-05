@@ -42,7 +42,7 @@ class TaskExecutorTest {
         when(mockBuilder.build()).thenReturn(mock(ChatClient.class));
         ConversationHistory mockHistory = mock(ConversationHistory.class);
         planner = mock(Planner.class);
-        executor = new TaskExecutor(handlerRegistry, planner);
+        executor = new TaskExecutor(handlerRegistry, planner, 60, 1, 2, 4);
     }
 
     @AfterEach
