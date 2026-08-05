@@ -2,6 +2,7 @@ package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.core.HandlerRegistry;
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
@@ -71,7 +72,8 @@ class MultiAgentIntegrationTest {
 
         // 真实多Agent独立会话记忆
         multiAgentChatMemory = MessageWindowChatMemory.builder().maxMessages(20).build();
-        planner = new Planner(mockBuilder, multiAgentChatMemory, new ConversationHistory(multiAgentChatMemory, 2));
+        planner = new Planner(mockBuilder, multiAgentChatMemory, new ConversationHistory(multiAgentChatMemory, 2),
+                mock(CostMonitorService.class));
         aggregator = new Aggregator(mockBuilder);
     }
 

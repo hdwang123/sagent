@@ -1,5 +1,6 @@
 package com.example.sagent.agent.routing;
 
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.handlers.McpHandler;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
@@ -54,7 +55,8 @@ class MessageClassifierTest {
         when(mockSpec.call()).thenReturn(mockCallSpec);
         when(mockHistory.format(anyString())).thenReturn("");
 
-        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(), List.of(), List.of(), mockMcpHandler);
+        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(), List.of(), List.of(), mockMcpHandler,
+                mock(CostMonitorService.class));
     }
 
     @Test
@@ -129,7 +131,8 @@ class MessageClassifierTest {
         when(mockSkill.getDescription()).thenReturn("生成Markdown文档");
 
         // 重新构建 classifier，包含技能
-        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(mockSkill), List.of(), List.of(), mockMcpHandler);
+        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(mockSkill), List.of(), List.of(), mockMcpHandler,
+                mock(CostMonitorService.class));
         RouteDecision decision = new RouteDecision(AgentType.SKILL, "文档操作");
         when(mockCallSpec.entity(eq(RouteDecision.class), any(Consumer.class))).thenReturn(decision);
 

@@ -1,5 +1,8 @@
 package com.example.sagent.agent.approval;
 
+import com.example.sagent.agent.audit.AuditLog;
+import com.example.sagent.agent.audit.OperationType;
+import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.model.ApprovalRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +35,10 @@ public class ApprovalService {
      * @param argsJson 参数JSON
      * @return 新建的审批记录
      */
+    @AuditLog(operationType = OperationType.APPROVAL_SUBMIT,
+            resourceType = ResourceType.APPROVAL,
+            resourceId = "createPending",
+            operationDetail = "提交审批申请")
     public ApprovalRecord createPending(String userId, String toolName, String argsJson) {
         ApprovalRecord record = approvalRepository.createPending(userId, toolName, argsJson);
         LOGGER.info("create PENDING #{}: {} {} (user={})", record.id(), toolName, argsJson, userId);
@@ -90,6 +97,10 @@ public class ApprovalService {
      * @param id 审批记录ID
      * @param executionResult 工具执行结果
      */
+    @AuditLog(operationType = OperationType.APPROVAL_APPROVE,
+            resourceType = ResourceType.APPROVAL,
+            resourceId = "approve",
+            operationDetail = "审批通过并执行")
     public void approve(String id, String executionResult) {
         ApprovalRecord record = getRecord(id);
         if (!"PENDING".equals(record.status())) {

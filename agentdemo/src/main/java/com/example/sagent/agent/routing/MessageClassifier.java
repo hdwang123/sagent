@@ -4,6 +4,7 @@ import com.example.sagent.agent.handlers.McpHandler;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.skills.ASkill;
 import com.example.sagent.agent.skills.GSkill;
 import com.example.sagent.agent.skills.Skill;
@@ -11,6 +12,9 @@ import com.example.sagent.agent.skills.ToolDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -82,6 +86,7 @@ public class MessageClassifier {
     private final List<GSkill> gSkills;
     private final List<ASkill> aSkills;
     private final McpHandler mcpHandler;
+    private final CostMonitorService costMonitorService;
 
     /**
      * 构造函数
@@ -92,6 +97,7 @@ public class MessageClassifier {
      * @param gSkills             GSKILL 技能 Bean 列表（动态生成工具清单）
      * @param aSkills             ASKILL 技能 Bean 列表（动态生成工具清单）
      * @param mcpHandler          MCP 处理器（提供动态 MCP 工具清单）
+     * @param costMonitorService  成本监控服务
      */
     public MessageClassifier(
             ChatClient.Builder chatClientBuilder,
@@ -99,7 +105,8 @@ public class MessageClassifier {
             List<Skill> skills,
             List<GSkill> gSkills,
             List<ASkill> aSkills,
-            McpHandler mcpHandler
+            McpHandler mcpHandler,
+            CostMonitorService costMonitorService
     ) {
         this.chatClient = chatClientBuilder.build();
         this.conversationHistory = conversationHistory;
@@ -107,6 +114,7 @@ public class MessageClassifier {
         this.gSkills = gSkills;
         this.aSkills = aSkills;
         this.mcpHandler = mcpHandler;
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -133,11 +141,27 @@ public class MessageClassifier {
                     %s
                     """.formatted(history, message);
 
-            RouteDecision decision = chatClient.prompt()
+            var callResponse = chatClient.prompt()
                     .system(buildClassificationPrompt())
                     .user(classificationInput)
-                    .call()
-                    .entity(RouteDecision.class, spec -> spec.validateSchema());
+                    .call();
+
+            RouteDecision decision = callResponse.entity(RouteDecision.class, spec -> spec.validateSchema());
+
+            // 记录成本
+            var chatResponse = callResponse.chatResponse();
+            ChatResponseMetadata metadata = chatResponse != null ? chatResponse.getMetadata() : null;
+            Usage usage = metadata != null ? metadata.getUsage() : null;
+            if (usage != null && usage.getPromptTokens() != null) {
+                costMonitorService.saveCostRecord(
+                        conversationId,
+                        "deepseek-chat",
+                        usage.getPromptTokens(),
+                        usage.getCompletionTokens(),
+                        "CLASSIFICATION",
+                        conversationId
+                );
+            }
 
             if (decision == null || decision.type() == null) {
                 long ms = (System.nanoTime() - start) / 1_000_000;

@@ -3,6 +3,7 @@ package com.example.sagent.agent.multi;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
@@ -10,6 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -77,13 +81,16 @@ public class Planner {
     private final ChatClient plannerClient;
     private final ChatMemory multiAgentChatMemory;
     private final ConversationHistory conversationHistory;
+    private final CostMonitorService costMonitorService;
 
     public Planner(ChatClient.Builder chatClientBuilder,
                    @Qualifier("multiAgentChatMemory") ChatMemory multiAgentChatMemory,
-                   ConversationHistory conversationHistory) {
+                   ConversationHistory conversationHistory,
+                   CostMonitorService costMonitorService) {
         this.plannerClient = chatClientBuilder.build();
         this.multiAgentChatMemory = multiAgentChatMemory;
         this.conversationHistory = conversationHistory;
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -102,16 +109,33 @@ public class Planner {
                 ? message
                 : "【会话历史】\n" + history + "\n\n【当前请求】\n" + message;
 
-        TaskPlan plan = plannerClient.prompt()
+        var callResponse = plannerClient.prompt()
                 .system(PLANNER_PROMPT)
                 .user(userInput)
                 .advisors(new SimpleLoggerAdvisor())
-                .call()
-                .entity(TaskPlan.class, spec -> spec.validateSchema());
+                .call();
+
+        TaskPlan plan = callResponse.entity(TaskPlan.class, spec -> spec.validateSchema());
         if (plan == null || plan.tasks() == null || plan.tasks().isEmpty()) {
             LOGGER.warn("Planner返回空计划，降级为单个聊天任务: {}", message);
             return new TaskPlan(List.of(new Task("t1", AgentType.CHAT, message, List.of())));
         }
+
+        // 记录成本
+        var chatResponse = callResponse.chatResponse();
+        ChatResponseMetadata metadata = chatResponse != null ? chatResponse.getMetadata() : null;
+        Usage usage = metadata != null ? metadata.getUsage() : null;
+        if (usage != null && usage.getPromptTokens() != null) {
+            costMonitorService.saveCostRecord(
+                    conversationId,
+                    "deepseek-chat",
+                    usage.getPromptTokens(),
+                    usage.getCompletionTokens(),
+                    "PLANNING",
+                    conversationId
+            );
+        }
+
         // P1-6: 图校验（id去重/悬空依赖过滤/环检测）
         TaskPlan validated = validateAndFixPlan(plan);
         logPlan("Planner拆解", validated.tasks());
@@ -143,7 +167,7 @@ public class Planner {
                         + ", dependsOn=" + t.dependsOn())
                 .collect(Collectors.joining("\n"));
 
-        TaskPlan newPlan = plannerClient.prompt()
+        var callResponse = plannerClient.prompt()
                 .system(REPLAN_PROMPT)
                 .user(u -> u.text("""
                         【原始用户请求】
@@ -163,12 +187,29 @@ public class Planner {
                         .param("failedTasks", failedTasks)
                         .param("pendingTasks", pendingTasks.isBlank() ? "无" : pendingTasks))
                 .advisors(new SimpleLoggerAdvisor())
-                .call()
-                .entity(TaskPlan.class, spec -> spec.validateSchema());
+                .call();
+
+        TaskPlan newPlan = callResponse.entity(TaskPlan.class, spec -> spec.validateSchema());
         if (newPlan == null || newPlan.tasks() == null || newPlan.tasks().isEmpty()) {
             LOGGER.warn("重新规划返回空，剩余任务不再执行");
             return List.of();
         }
+
+        // 记录成本
+        var chatResponse = callResponse.chatResponse();
+        ChatResponseMetadata metadata = chatResponse != null ? chatResponse.getMetadata() : null;
+        Usage usage = metadata != null ? metadata.getUsage() : null;
+        if (usage != null && usage.getPromptTokens() != null) {
+            costMonitorService.saveCostRecord(
+                    "replan",  // conversationId 用 replan 代替
+                    "deepseek-chat",
+                    usage.getPromptTokens(),
+                    usage.getCompletionTokens(),
+                    "REPLANNING",
+                    "replan"
+            );
+        }
+
         // P1-6: 重新规划结果同样需要图校验
         TaskPlan validated = validateAndFixPlan(newPlan);
         logPlan("重新规划", validated.tasks());

@@ -1,5 +1,6 @@
 package com.example.sagent.agent.multi;
 
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.Task;
@@ -30,7 +31,7 @@ class PlannerGraphValidationTest {
         ChatClient.Builder mockBuilder = mock(ChatClient.Builder.class);
         when(mockBuilder.build()).thenReturn(mock(ChatClient.class));
         ConversationHistory mockHistory = mock(ConversationHistory.class);
-        planner = new Planner(mockBuilder, mock(ChatMemory.class), mockHistory);
+        planner = new Planner(mockBuilder, mock(ChatMemory.class), mockHistory, mock(CostMonitorService.class));
     }
 
     // === hasCycle ===
