@@ -1,6 +1,11 @@
 package com.example.sagent.agent.handlers;
 
+import com.example.sagent.agent.audit.AuditLog;
+import com.example.sagent.agent.audit.OperationType;
+import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.cost.CostMonitorService;
+import com.example.sagent.agent.cost.TokenUsageCostAdvisor;
 import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
@@ -56,6 +61,7 @@ public class ASkillHandler implements AgentHandler {
     private final ChatClient chatClient;
     private final List<ASkill> skills;
     private final UserIdResolver userIdResolver;
+    private final CostMonitorService costMonitorService;
 
     /**
      * 构造函数
@@ -69,13 +75,16 @@ public class ASkillHandler implements AgentHandler {
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
             List<ASkill> skills,
-            UserIdResolver userIdResolver
+            UserIdResolver userIdResolver,
+            CostMonitorService costMonitorService
     ) {
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
+                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor(),
+                        new TokenUsageCostAdvisor(costMonitorService))
                 .build();
         this.skills = skills;
         this.userIdResolver = userIdResolver;
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -99,22 +108,25 @@ public class ASkillHandler implements AgentHandler {
      * @param message        用户消息
      * @return HandlerResult处理结果
      */
+    @AuditLog(operationType = OperationType.TOOL_CALL, resourceType = ResourceType.TOOL,
+            resourceId = "ASKILL", operationDetail = "审批技能执行（提交/查询审批）")
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
             ApprovalContext.setConversationId(conversationId);
             ApprovalContext.setUserId(userIdResolver.resolve(conversationId));
 
-            AgentResult result = chatClient.prompt()
+            var callResponse = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user(message)
                     .tools(skills.toArray())
                     .advisors(advisor -> advisor.param(
-                            ChatMemory.CONVERSATION_ID,
-                            conversationId
-                    ))
-                    .call()
-                    .entity(AgentResult.class);
+                                    ChatMemory.CONVERSATION_ID,
+                                    conversationId
+                            )
+                            .param("operationType", "ASKILL"))
+                    .call();
+            AgentResult result = callResponse.entity(AgentResult.class);
 
             if (result == null) {
                 return new HandlerResult("", List.of(), HandlerResult.CODE_SUCCESS);

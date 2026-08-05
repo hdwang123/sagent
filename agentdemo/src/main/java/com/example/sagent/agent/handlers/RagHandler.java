@@ -1,6 +1,10 @@
 package com.example.sagent.agent.handlers;
 
+import com.example.sagent.agent.audit.AuditLog;
+import com.example.sagent.agent.audit.OperationType;
+import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
@@ -56,6 +60,7 @@ public class RagHandler implements AgentHandler {
     private final ChatClient rerankClient;
     private final VectorKnowledgeRetriever knowledgeRetriever;
     private final ConversationHistory conversationHistory;
+    private final CostMonitorService costMonitorService;
 
     /**
      * 构造函数
@@ -75,7 +80,8 @@ public class RagHandler implements AgentHandler {
             ConversationHistory conversationHistory,
             ChatModel chatModel,
             @Value("${agent.rag.hybrid-top-k:10}") int hybridTopK,
-            @Value("${agent.rag.reranked-top-k:3}") int rerankedTopK
+            @Value("${agent.rag.reranked-top-k:3}") int rerankedTopK,
+            CostMonitorService costMonitorService
     ) {
         this.hybridTopK = hybridTopK;
         this.rerankedTopK = rerankedTopK;
@@ -85,6 +91,7 @@ public class RagHandler implements AgentHandler {
         this.rerankClient = ChatClient.builder(chatModel).build();
         this.knowledgeRetriever = knowledgeRetriever;
         this.conversationHistory = conversationHistory;
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -104,6 +111,8 @@ public class RagHandler implements AgentHandler {
      * @param message        用户消息
      * @return HandlerResult处理结果，包含回答和来源列表
      */
+    @AuditLog(operationType = OperationType.TOOL_CALL, resourceType = ResourceType.TOOL,
+            resourceId = "RAG", operationDetail = "知识库检索问答")
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
@@ -112,7 +121,7 @@ public class RagHandler implements AgentHandler {
             // 1. 混合检索：向量 + 关键词，召回 Top-10
             List<VectorKnowledgeRetriever.KnowledgeHit> hybridHits = knowledgeRetriever.hybridSearch(retrievalQuery, hybridTopK);
 
-            List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(message, hybridHits, rerankedTopK);
+            List<VectorKnowledgeRetriever.KnowledgeHit> hits = llmRerank(conversationId, message, hybridHits, rerankedTopK);
 
             String context = hits.isEmpty()
                     ? "没有检索到相关知识库内容。"
@@ -120,7 +129,7 @@ public class RagHandler implements AgentHandler {
                             .map(hit -> "[来源: " + hit.source() + "]\n" + hit.content())
                             .collect(Collectors.joining("\n\n---\n\n"));
 
-            String answer = chatClient.prompt()
+            var callResponse = chatClient.prompt()
                     .system(RAG_SYSTEM_PROMPT)
                     .user(user -> user.text("""
                                     用户问题：
@@ -135,8 +144,9 @@ public class RagHandler implements AgentHandler {
                             ChatMemory.CONVERSATION_ID,
                             conversationId
                     ))
-                    .call()
-                    .content();
+                    .call();
+            String answer = callResponse.content();
+            costMonitorService.saveCostRecord(conversationId, "RAG", callResponse.chatResponse());
 
             List<String> sources = hits.stream()
                     .map(VectorKnowledgeRetriever.KnowledgeHit::source)
@@ -156,6 +166,7 @@ public class RagHandler implements AgentHandler {
      * 用LLM对混合检索候选文档打分，返回Top-K
      */
     private List<VectorKnowledgeRetriever.KnowledgeHit> llmRerank(
+            String conversationId,
             String question,
             List<VectorKnowledgeRetriever.KnowledgeHit> candidates,
             int topK
@@ -173,12 +184,13 @@ public class RagHandler implements AgentHandler {
         }
 
         try {
-            String response = rerankClient.prompt()
+            var callResponse = rerankClient.prompt()
                     .user(user -> user.text(RERANK_PROMPT)
                             .param("question", question)
                             .param("documents", docList.toString()))
-                    .call()
-                    .content();
+                    .call();
+            String response = callResponse.content();
+            costMonitorService.saveCostRecord(conversationId, "RAG_RERANK", callResponse.chatResponse());
 
             // 解析LLM返回的分数
             List<Integer> scores = parseScores(response, candidates.size());

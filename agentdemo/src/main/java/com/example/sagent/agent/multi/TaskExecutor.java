@@ -6,6 +6,7 @@ import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
+import com.example.sagent.agent.skills.ApprovalContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -243,6 +244,17 @@ public class TaskExecutor {
      */
     private HandlerResult runSubAgent(String conversationId, Task task,
                                       Map<String, HandlerResult> results, TaskPlan plan) {
+        // 子任务在线程池独立线程执行，ThreadLocal 不跨线程传递，手动绑定会话身份供审计/审批切面取 userId
+        ApprovalContext.setConversationId(conversationId);
+        try {
+            return doRunSubAgent(conversationId, task, results, plan);
+        } finally {
+            ApprovalContext.clear();
+        }
+    }
+
+    private HandlerResult doRunSubAgent(String conversationId, Task task,
+                                        Map<String, HandlerResult> results, TaskPlan plan) {
         String baseGoal = buildGoalWithDeps(task, results, plan);
         HandlerResult lastResult = null;
         int maxAttempts = 1 + maxRetry;

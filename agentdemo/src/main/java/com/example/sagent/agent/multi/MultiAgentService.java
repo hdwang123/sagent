@@ -2,6 +2,7 @@ package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.TaskPlan;
+import com.example.sagent.agent.skills.ApprovalContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -59,7 +60,7 @@ public class MultiAgentService {
 
         // 3. 汇总Agent生成最终回答（含try-catch兜底，不会返回null）
         start = System.nanoTime();
-        String answer = aggregator.aggregate(message, results, plan);
+        String answer = aggregator.aggregate(conversationId, message, results, plan);
         long aggregateMs = (System.nanoTime() - start) / 1_000_000;
 
         LOGGER.info("多Agent编排耗时: plan={}ms, execute={}ms, aggregate={}ms, total={}ms",

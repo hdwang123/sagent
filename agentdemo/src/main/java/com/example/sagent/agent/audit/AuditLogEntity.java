@@ -1,22 +1,22 @@
 package com.example.sagent.agent.audit;
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 import java.time.Instant;
 
 /**
  * 审计日志实体
+ * <p>
+ * 注：JPA 实体要求无参构造 + 可变类（代理/水合机制），无法使用 Java record，
+ * 故采用全参构造 + getter 的不可变风格替代 Lombok。
  */
 @Entity
 @Table(name = "audit_log")
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AuditLogEntity {
 
     @Id
@@ -49,4 +49,63 @@ public class AuditLogEntity {
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    /** JPA 规范要求提供无参构造 */
+    protected AuditLogEntity() {
+    }
+
+    public AuditLogEntity(Long id, String userId, String operationType, String resourceType,
+                          String resourceId, String operationDetail, String status,
+                          String errorMessage, Long durationMs, Instant createdAt) {
+        this.id = id;
+        this.userId = userId;
+        this.operationType = operationType;
+        this.resourceType = resourceType;
+        this.resourceId = resourceId;
+        this.operationDetail = operationDetail;
+        this.status = status;
+        this.errorMessage = errorMessage;
+        this.durationMs = durationMs;
+        this.createdAt = createdAt;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public String getOperationType() {
+        return operationType;
+    }
+
+    public String getResourceType() {
+        return resourceType;
+    }
+
+    public String getResourceId() {
+        return resourceId;
+    }
+
+    public String getOperationDetail() {
+        return operationDetail;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public Long getDurationMs() {
+        return durationMs;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 }

@@ -1,6 +1,7 @@
 package com.example.sagent.agent.handlers;
 
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ public class ChatHandler implements AgentHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatHandler.class);
 
     private final ChatClient chatClient;
+    private final CostMonitorService costMonitorService;
 
     /**
      * 构造函数
@@ -32,11 +34,13 @@ public class ChatHandler implements AgentHandler {
      */
     public ChatHandler(
             ChatClient.Builder chatClientBuilder,
-            @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor
+            @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor,
+            CostMonitorService costMonitorService
     ) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(memoryAdvisor)
                 .build();
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -59,15 +63,16 @@ public class ChatHandler implements AgentHandler {
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
-            String answer = chatClient.prompt()
+            var callResponse = chatClient.prompt()
                     .system("你是 Sagent 助手。请准确、简洁地使用中文回答用户。")
                     .user(message)
                     .advisors(advisor -> advisor.param(
                             ChatMemory.CONVERSATION_ID,
                             conversationId
                     ))
-                    .call()
-                    .content();
+                    .call();
+            String answer = callResponse.content();
+            costMonitorService.saveCostRecord(conversationId, "CHAT", callResponse.chatResponse());
             return new HandlerResult(answer);
         } catch (Exception e) {
             LOGGER.error("ChatHandler处理失败", e);

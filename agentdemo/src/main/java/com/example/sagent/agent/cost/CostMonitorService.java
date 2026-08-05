@@ -1,9 +1,10 @@
 package com.example.sagent.agent.cost;
 
-import com.example.sagent.agent.cost.CostRecord;
-import com.example.sagent.agent.cost.CostRecordRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -15,13 +16,16 @@ import java.util.List;
  * 成本监控服务
  * 异步记录 LLM 调用的 token 消耗和费用
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class CostMonitorService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(CostMonitorService.class);
+
     private final CostRecordRepository costRecordRepository;
-    private final ModelPricing pricing;
+
+    public CostMonitorService(CostRecordRepository costRecordRepository) {
+        this.costRecordRepository = costRecordRepository;
+    }
 
     /**
      * 异步保存成本记录
@@ -30,9 +34,9 @@ public class CostMonitorService {
     public void saveCostRecord(String userId, String modelName,
                                 long inputTokens, long outputTokens,
                                 String operationType, String conversationId) {
-        ModelPricing.Pricing p = pricing.get(modelName);
+        ModelPricing.Pricing p = ModelPricing.get(modelName);
         if (p == null) {
-            log.warn("No pricing found for model: {}", modelName);
+            LOGGER.warn("No pricing found for model: {}", modelName);
             return;
         }
 
@@ -45,22 +49,45 @@ public class CostMonitorService {
                 .divide(BigDecimal.valueOf(1000));
         BigDecimal totalCost = inputCost.add(outputCost);
 
-        CostRecord record = CostRecord.builder()
-                .userId(userId)
-                .modelName(modelName)
-                .inputTokens(inputTokens)
-                .outputTokens(outputTokens)
-                .totalTokens(totalTokens)
-                .costUsd(totalCost)
-                .operationType(operationType)
-                .conversationId(conversationId)
-                .createdAt(LocalDateTime.now())
-                .build();
+        CostRecord record = new CostRecord(
+                null,
+                userId,
+                modelName,
+                inputTokens,
+                outputTokens,
+                totalTokens,
+                totalCost,
+                operationType,
+                conversationId,
+                LocalDateTime.now());
 
         costRecordRepository.save(record);
-        log.info("Cost record saved: userId={}, model={}, input={}, output={}, total={}, cost=${}",
+        LOGGER.info("Cost record saved: userId={}, model={}, input={}, output={}, total={}, cost=${}",
                 record.getUserId(), record.getModelName(),
                 inputTokens, outputTokens, totalTokens, totalCost);
+    }
+
+    /**
+     * 便捷方法：从 ChatResponse 提取 usage 异步保存成本记录（null-safe）
+     * 调用点只需传会话ID、操作类型与响应对象，避免各 Handler 重复解析 usage
+     *
+     * @param conversationId 会话ID
+     * @param operationType  操作类型（SKILL/GSKILL/CHAT/RAG/AGGREGATION 等）
+     * @param chatResponse   LLM 调用响应（可能为 null）
+     */
+    @Async
+    public void saveCostRecord(String conversationId, String operationType, ChatResponse chatResponse) {
+        if (chatResponse == null) {
+            return;
+        }
+        ChatResponseMetadata metadata = chatResponse.getMetadata();
+        Usage usage = metadata != null ? metadata.getUsage() : null;
+        if (usage == null || usage.getPromptTokens() == null) {
+            return;
+        }
+        String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-chat";
+        saveCostRecord(conversationId, modelName, usage.getPromptTokens(),
+                usage.getCompletionTokens(), operationType, conversationId);
     }
 
     /**

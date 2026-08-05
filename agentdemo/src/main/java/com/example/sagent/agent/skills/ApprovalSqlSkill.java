@@ -2,6 +2,9 @@ package com.example.sagent.agent.skills;
 
 import com.example.sagent.agent.approval.Approval;
 import com.example.sagent.agent.approval.ApprovalRepository;
+import com.example.sagent.agent.audit.AuditLog;
+import com.example.sagent.agent.audit.OperationType;
+import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.model.ApprovalRecord;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -74,6 +77,8 @@ public class ApprovalSqlSkill implements ASkill {
 
     // ===== 写入方法（加 @Approval(enable=true) 触发审批拦截） =====
 
+    @AuditLog(operationType = OperationType.PRODUCT_UPDATE, resourceType = ResourceType.PRODUCT,
+            resourceId = "deleteProduct", operationDetail = "删除产品（需审批）")
     @Approval(enable = true)
     @Tool(description = "根据产品ID删除产品。注意：删除操作不可恢复")
     public String deleteProduct(
@@ -86,6 +91,8 @@ public class ApprovalSqlSkill implements ASkill {
         return "已删除产品（ID: %d, 名称: %s），共删除 %d 条记录".formatted(id, name, rows);
     }
 
+    @AuditLog(operationType = OperationType.PRODUCT_UPDATE, resourceType = ResourceType.PRODUCT,
+            resourceId = "updateProductPrice", operationDetail = "修改产品价格（需审批）")
     @Approval(enable = true)
     @Tool(description = "修改产品价格")
     public String updateProductPrice(
@@ -97,6 +104,8 @@ public class ApprovalSqlSkill implements ASkill {
         return "已修改产品价格（ID: %d -> %.2f），共更新 %d 条记录".formatted(id, newPrice, rows);
     }
 
+    @AuditLog(operationType = OperationType.PRODUCT_UPDATE, resourceType = ResourceType.PRODUCT,
+            resourceId = "updateProductStock", operationDetail = "修改产品库存（需审批）")
     @Approval(enable = true)
     @Tool(description = "修改产品库存")
     public String updateProductStock(

@@ -1,6 +1,11 @@
 package com.example.sagent.agent.handlers;
 
+import com.example.sagent.agent.audit.AuditLog;
+import com.example.sagent.agent.audit.OperationType;
+import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.core.AgentHandler;
+import com.example.sagent.agent.cost.CostMonitorService;
+import com.example.sagent.agent.cost.TokenUsageCostAdvisor;
 import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
@@ -54,6 +59,7 @@ public class McpHandler implements AgentHandler {
 
     private final ChatClient chatClient;
     private final String mcpServerUrl;
+    private final CostMonitorService costMonitorService;
     private volatile SyncMcpToolCallbackProvider mcpToolCallbackProvider;
 
     /**
@@ -67,12 +73,15 @@ public class McpHandler implements AgentHandler {
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
             @Value("${mcp.server.url}")
-            String mcpServerUrl
+            String mcpServerUrl,
+            CostMonitorService costMonitorService
     ) {
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor())
+                .defaultAdvisors(toolMemoryAdvisor, new SimpleLoggerAdvisor(),
+                        new TokenUsageCostAdvisor(costMonitorService))
                 .build();
         this.mcpServerUrl = mcpServerUrl;
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -146,19 +155,22 @@ public class McpHandler implements AgentHandler {
      * @param message        用户消息
      * @return HandlerResult处理结果
      */
+    @AuditLog(operationType = OperationType.TOOL_CALL, resourceType = ResourceType.TOOL,
+            resourceId = "MCP", operationDetail = "MCP外部工具调用（计算/天气/股票等）")
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {
-            AgentResult result = chatClient.prompt()
+            var callResponse = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user(message)
                     .tools(getMcpToolCallbackProvider().getToolCallbacks())
                     .advisors(advisor -> advisor.param(
-                            ChatMemory.CONVERSATION_ID,
-                            conversationId
-                    ))
-                    .call()
-                    .entity(AgentResult.class);
+                                    ChatMemory.CONVERSATION_ID,
+                                    conversationId
+                            )
+                            .param("operationType", "MCP"))
+                    .call();
+            AgentResult result = callResponse.entity(AgentResult.class);
 
             if (result == null) {
                 return new HandlerResult("", List.of(), HandlerResult.CODE_SUCCESS);

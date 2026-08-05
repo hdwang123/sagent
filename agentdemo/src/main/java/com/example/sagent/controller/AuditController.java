@@ -4,8 +4,6 @@ import com.example.sagent.agent.audit.AuditLogEntity;
 import com.example.sagent.agent.audit.AuditLogRepository;
 import com.example.sagent.agent.cost.CostRecord;
 import com.example.sagent.agent.cost.CostRecordRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -21,14 +19,17 @@ import java.util.Map;
 /**
  * 审计和成本查询接口
  */
-@Slf4j
 @RestController
 @RequestMapping("/api/admin/audit")
-@RequiredArgsConstructor
 public class AuditController {
 
     private final AuditLogRepository auditLogRepository;
     private final CostRecordRepository costRecordRepository;
+
+    public AuditController(AuditLogRepository auditLogRepository, CostRecordRepository costRecordRepository) {
+        this.auditLogRepository = auditLogRepository;
+        this.costRecordRepository = costRecordRepository;
+    }
 
     /**
      * 查询审计日志

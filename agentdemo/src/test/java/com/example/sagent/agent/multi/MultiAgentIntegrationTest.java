@@ -74,7 +74,7 @@ class MultiAgentIntegrationTest {
         multiAgentChatMemory = MessageWindowChatMemory.builder().maxMessages(20).build();
         planner = new Planner(mockBuilder, multiAgentChatMemory, new ConversationHistory(multiAgentChatMemory, 2),
                 mock(CostMonitorService.class));
-        aggregator = new Aggregator(mockBuilder);
+        aggregator = new Aggregator(mockBuilder, mock(CostMonitorService.class));
     }
 
     @AfterEach

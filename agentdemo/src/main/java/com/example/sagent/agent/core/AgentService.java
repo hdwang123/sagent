@@ -1,10 +1,12 @@
 package com.example.sagent.agent.core;
 
+import com.example.sagent.agent.approval.UserIdResolver;
 import com.example.sagent.agent.model.AgentResponse;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.RouteDecision;
 import com.example.sagent.agent.routing.MessageClassifier;
+import com.example.sagent.agent.skills.ApprovalContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ public class AgentService {
 
     private final MessageClassifier classifier;
     private final HandlerRegistry handlerRegistry;
+    private final UserIdResolver userIdResolver;
 
     /**
      * 构造函数
@@ -27,9 +30,10 @@ public class AgentService {
      * @param classifier      消息分类器
      * @param handlerRegistry 处理器注册表
      */
-    public AgentService(MessageClassifier classifier, HandlerRegistry handlerRegistry) {
+    public AgentService(MessageClassifier classifier, HandlerRegistry handlerRegistry, UserIdResolver userIdResolver) {
         this.classifier = classifier;
         this.handlerRegistry = handlerRegistry;
+        this.userIdResolver = userIdResolver;
     }
 
     /**
@@ -41,6 +45,17 @@ public class AgentService {
      * @return AgentResponse响应结果
      */
     public AgentResponse ask(String conversationId, String message) {
+        // 将会话身份绑定到 ThreadLocal，供审计/审批切面从上下文取 userId
+        ApprovalContext.setConversationId(conversationId);
+        ApprovalContext.setUserId(userIdResolver.resolve(conversationId));
+        try {
+            return doAsk(conversationId, message);
+        } finally {
+            ApprovalContext.clear();
+        }
+    }
+
+    private AgentResponse doAsk(String conversationId, String message) {
         long start = System.nanoTime();
         RouteDecision decision = classifier.classify(conversationId, message);
         long classifyMs = (System.nanoTime() - start) / 1_000_000;

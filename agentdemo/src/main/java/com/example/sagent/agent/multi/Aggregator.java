@@ -1,5 +1,6 @@
 package com.example.sagent.agent.multi;
 
+import com.example.sagent.agent.cost.CostMonitorService;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
@@ -31,9 +32,11 @@ public class Aggregator {
             """;
 
     private final ChatClient aggregateClient;
+    private final CostMonitorService costMonitorService;
 
-    public Aggregator(ChatClient.Builder chatClientBuilder) {
+    public Aggregator(ChatClient.Builder chatClientBuilder, CostMonitorService costMonitorService) {
         this.aggregateClient = chatClientBuilder.build();
+        this.costMonitorService = costMonitorService;
     }
 
     /**
@@ -46,7 +49,7 @@ public class Aggregator {
      * @param plan     任务计划（提供 id→Task 索引，用于查goal作为可读标签）
      * @return 汇总后的最终回答（非 null）
      */
-    public String aggregate(String message, Map<String, HandlerResult> results, TaskPlan plan) {
+    public String aggregate(String conversationId, String message, Map<String, HandlerResult> results, TaskPlan plan) {
         String subResults = results.entrySet().stream()
                 .map(e -> {
                     Task t = plan.taskById().get(e.getKey());
@@ -55,13 +58,14 @@ public class Aggregator {
                 })
                 .collect(Collectors.joining("\n\n---\n\n"));
         try {
-            String answer = aggregateClient.prompt()
+            var callResponse = aggregateClient.prompt()
                     .system(AGGREGATE_PROMPT)
                     .user(user -> user.text("用户原始请求：{message}\n\n子任务结果：\n{subResults}")
                             .param("message", message)
                             .param("subResults", subResults))
-                    .call()
-                    .content();
+                    .call();
+            String answer = callResponse.content();
+            costMonitorService.saveCostRecord(conversationId, "AGGREGATION", callResponse.chatResponse());
             if (answer == null || answer.isBlank()) {
                 LOGGER.warn("汇总Agent返回空，降级为拼接子任务结果");
                 return fallbackAnswer(results, plan);

@@ -1,5 +1,6 @@
 package com.example.sagent.agent.core;
 
+import com.example.sagent.agent.approval.UserIdResolver;
 import com.example.sagent.agent.model.AgentResponse;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
@@ -31,7 +32,7 @@ class AgentServiceTest {
     void setUp() {
         classifier = mock(MessageClassifier.class);
         handlerRegistry = mock(HandlerRegistry.class);
-        agentService = new AgentService(classifier, handlerRegistry);
+        agentService = new AgentService(classifier, handlerRegistry, mock(UserIdResolver.class));
     }
 
     // === 正常路由 ===
