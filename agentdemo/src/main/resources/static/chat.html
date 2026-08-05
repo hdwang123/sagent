@@ -543,6 +543,16 @@
                     <i class="el-icon-s-data"></i>
                 </button>
             </el-tooltip>
+            <el-tooltip content="审计日志" placement="bottom">
+                <button class="icon-button" type="button" aria-label="审计日志" @click="goAdmin('audit')">
+                    <i class="el-icon-notebook-2"></i>
+                </button>
+            </el-tooltip>
+            <el-tooltip content="Token 监控" placement="bottom">
+                <button class="icon-button" type="button" aria-label="Token 监控" @click="goAdmin('cost')">
+                    <i class="el-icon-pie-chart"></i>
+                </button>
+            </el-tooltip>
         </div>
     </header>
 
@@ -918,6 +928,9 @@
             },
             openProductPanel: function () {
                 this.productDialogVisible = true;
+            },
+            goAdmin: function (tab) {
+                window.location.href = 'admin.html?tab=' + (tab || 'audit');
             },
             fetchApprovals: async function () {
                 this.approvalLoading = true;

@@ -70,15 +70,15 @@ public class AuditController {
 
         long totalInput = records.stream().mapToLong(CostRecord::getInputTokens).sum();
         long totalOutput = records.stream().mapToLong(CostRecord::getOutputTokens).sum();
-        BigDecimal totalCost = records.stream()
-                .map(CostRecord::getCostUsd)
+        BigDecimal totalCostCny = records.stream()
+                .map(CostRecord::getCostCny)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return Map.of(
                 "totalInputTokens", totalInput,
                 "totalOutputTokens", totalOutput,
                 "totalTokens", totalInput + totalOutput,
-                "totalCost", totalCost,
+                "totalCostCny", totalCostCny,
                 "records", records
         );
     }

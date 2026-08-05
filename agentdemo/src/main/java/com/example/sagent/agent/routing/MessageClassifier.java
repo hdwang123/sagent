@@ -158,7 +158,7 @@ public class MessageClassifier {
                         "deepseek-chat",
                         usage.getPromptTokens(),
                         usage.getCompletionTokens(),
-                        "CLASSIFICATION",
+                        "routing/classifier",
                         conversationId
                 );
             }

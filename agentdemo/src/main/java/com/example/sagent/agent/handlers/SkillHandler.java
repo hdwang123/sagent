@@ -107,7 +107,7 @@ public class SkillHandler implements AgentHandler {
                                     ChatMemory.CONVERSATION_ID,
                                     conversationId
                             )
-                            .param("operationType", "SKILL"))
+                            .param("operationType", "agent/skill"))
                     .call();
             String raw = callResponse.content();
 

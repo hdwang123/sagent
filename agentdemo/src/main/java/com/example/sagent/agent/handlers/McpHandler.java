@@ -168,7 +168,7 @@ public class McpHandler implements AgentHandler {
                                     ChatMemory.CONVERSATION_ID,
                                     conversationId
                             )
-                            .param("operationType", "MCP"))
+                            .param("operationType", "agent/mcp"))
                     .call();
             AgentResult result = callResponse.entity(AgentResult.class);
 

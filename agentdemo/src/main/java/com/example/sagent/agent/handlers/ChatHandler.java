@@ -72,7 +72,7 @@ public class ChatHandler implements AgentHandler {
                     ))
                     .call();
             String answer = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "CHAT", callResponse.chatResponse());
+            costMonitorService.saveCostRecord(conversationId, "agent/chat", callResponse.chatResponse());
             return new HandlerResult(answer);
         } catch (Exception e) {
             LOGGER.error("ChatHandler处理失败", e);

@@ -34,37 +34,38 @@ public class CostMonitorService {
     public void saveCostRecord(String userId, String modelName,
                                 long inputTokens, long outputTokens,
                                 String operationType, String conversationId) {
-        ModelPricing.Pricing p = ModelPricing.get(modelName);
-        if (p == null) {
-            LOGGER.warn("No pricing found for model: {}", modelName);
-            return;
+        try {
+            ModelPricing.Pricing p = ModelPricing.get(modelName);
+
+            long totalTokens = inputTokens + outputTokens;
+            BigDecimal inputCost = p.inputPricePer1k()
+                    .multiply(BigDecimal.valueOf(inputTokens))
+                    .divide(BigDecimal.valueOf(1000));
+            BigDecimal outputCost = p.outputPricePer1k()
+                    .multiply(BigDecimal.valueOf(outputTokens))
+                    .divide(BigDecimal.valueOf(1000));
+            BigDecimal totalCostCny = inputCost.add(outputCost);
+
+            CostRecord record = new CostRecord(
+                    null,
+                    userId,
+                    modelName,
+                    inputTokens,
+                    outputTokens,
+                    totalTokens,
+                    totalCostCny,
+                    operationType,
+                    conversationId,
+                    LocalDateTime.now());
+
+            costRecordRepository.save(record);
+            LOGGER.info("Cost record saved: userId={}, model={}, input={}, output={}, total={}, cost=¥{}",
+                    record.getUserId(), record.getModelName(),
+                    inputTokens, outputTokens, totalTokens, totalCostCny);
+        } catch (Exception e) {
+            LOGGER.error("Cost record save failed: userId={}, model={}, operation={}, conversationId={}",
+                    userId, modelName, operationType, conversationId, e);
         }
-
-        long totalTokens = inputTokens + outputTokens;
-        BigDecimal inputCost = p.inputPricePer1k()
-                .multiply(BigDecimal.valueOf(inputTokens))
-                .divide(BigDecimal.valueOf(1000));
-        BigDecimal outputCost = p.outputPricePer1k()
-                .multiply(BigDecimal.valueOf(outputTokens))
-                .divide(BigDecimal.valueOf(1000));
-        BigDecimal totalCost = inputCost.add(outputCost);
-
-        CostRecord record = new CostRecord(
-                null,
-                userId,
-                modelName,
-                inputTokens,
-                outputTokens,
-                totalTokens,
-                totalCost,
-                operationType,
-                conversationId,
-                LocalDateTime.now());
-
-        costRecordRepository.save(record);
-        LOGGER.info("Cost record saved: userId={}, model={}, input={}, output={}, total={}, cost=${}",
-                record.getUserId(), record.getModelName(),
-                inputTokens, outputTokens, totalTokens, totalCost);
     }
 
     /**
@@ -72,7 +73,8 @@ public class CostMonitorService {
      * 调用点只需传会话ID、操作类型与响应对象，避免各 Handler 重复解析 usage
      *
      * @param conversationId 会话ID
-     * @param operationType  操作类型（SKILL/GSKILL/CHAT/RAG/AGGREGATION 等）
+     * @param operationType  场景标识（格式：agent/multi 前缀 + 具体 handler/阶段，
+     *                       如 agent/skill、agent/chat、multi/planner、multi/aggregator）
      * @param chatResponse   LLM 调用响应（可能为 null）
      */
     @Async

@@ -146,7 +146,7 @@ public class RagHandler implements AgentHandler {
                     ))
                     .call();
             String answer = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "RAG", callResponse.chatResponse());
+            costMonitorService.saveCostRecord(conversationId, "agent/rag", callResponse.chatResponse());
 
             List<String> sources = hits.stream()
                     .map(VectorKnowledgeRetriever.KnowledgeHit::source)
@@ -190,7 +190,7 @@ public class RagHandler implements AgentHandler {
                             .param("documents", docList.toString()))
                     .call();
             String response = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "RAG_RERANK", callResponse.chatResponse());
+            costMonitorService.saveCostRecord(conversationId, "agent/rag-rerank", callResponse.chatResponse());
 
             // 解析LLM返回的分数
             List<Integer> scores = parseScores(response, candidates.size());

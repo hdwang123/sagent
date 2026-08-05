@@ -109,7 +109,7 @@ public class GSkillHandler implements AgentHandler {
                                     ChatMemory.CONVERSATION_ID,
                                     conversationId
                             )
-                            .param("operationType", "GSKILL"))
+                            .param("operationType", "agent/gskill"))
                     .call();
             AgentResult result = callResponse.entity(AgentResult.class);
 

@@ -65,7 +65,7 @@ public class Aggregator {
                             .param("subResults", subResults))
                     .call();
             String answer = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "AGGREGATION", callResponse.chatResponse());
+            costMonitorService.saveCostRecord(conversationId, "multi/aggregator", callResponse.chatResponse());
             if (answer == null || answer.isBlank()) {
                 LOGGER.warn("汇总Agent返回空，降级为拼接子任务结果");
                 return fallbackAnswer(results, plan);

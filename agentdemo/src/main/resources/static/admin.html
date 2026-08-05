@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sagent Admin - 审计与Token监控</title>
+    <link rel="stylesheet" href="lib/element-ui/index.css">
+    <style>
+        :root {
+            --page-bg: #f3f5f7;
+            --panel-bg: #ffffff;
+            --border: #dfe3e8;
+            --text: #1f2933;
+            --muted: #6b7280;
+            --primary: #176b5b;
+            --primary-hover: #115548;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        body {
+            color: var(--text);
+            background: var(--page-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+
+        .app-shell {
+            display: grid;
+            grid-template-rows: 58px minmax(0, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 0 22px;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            gap: 11px;
+        }
+
+        .brand-mark {
+            display: grid;
+            flex: 0 0 32px;
+            width: 32px;
+            height: 32px;
+            place-items: center;
+            color: #fff;
+            background: var(--primary);
+            border-radius: 6px;
+            font-size: 17px;
+        }
+
+        .brand-copy {
+            min-width: 0;
+        }
+
+        .brand-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        .brand-subtitle {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .page-body {
+            overflow: auto;
+            padding: 20px 24px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 20px;
+        }
+
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .summary-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            background: linear-gradient(135deg, #f8faf9, #ffffff);
+        }
+
+        .summary-label {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .summary-value {
+            margin-top: 6px;
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .summary-sub {
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .detail-cell {
+            font-size: 12px;
+            color: var(--muted);
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cost-amount {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .pagination-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+<div id="app" class="app-shell">
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark"><i class="el-icon-monitor"></i></div>
+            <div class="brand-copy">
+                <h1 class="brand-title">Sagent Admin</h1>
+                <p class="brand-subtitle">审计日志与 Token 成本监控</p>
+            </div>
+        </div>
+        <div class="topbar-actions">
+            <el-button size="small" icon="el-icon-chat-dot-round" @click="goChat">返回聊天</el-button>
+        </div>
+    </header>
+
+    <main class="page-body">
+        <div class="panel">
+            <el-tabs v-model="activeTab">
+                <!-- ============ 审计日志 ============ -->
+                <el-tab-pane label="审计日志" name="audit">
+                    <div class="filter-bar">
+                        <el-input v-model="auditFilter.userId" placeholder="用户ID" clearable style="width:180px;"></el-input>
+                        <el-date-picker v-model="auditFilter.dateRange" type="daterange"
+                                        range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"
+                                        value-format="yyyy-MM-dd" style="width:260px;"></el-date-picker>
+                        <el-button type="primary" icon="el-icon-search" @click="loadAudit(1)">查询</el-button>
+                        <el-button icon="el-icon-refresh" @click="resetAuditFilter">重置</el-button>
+                    </div>
+
+                    <el-table :data="auditRows" v-loading="auditLoading" stripe size="small" style="width:100%;">
+                        <el-table-column label="时间" width="168">
+                            <template slot-scope="scope">{{ formatTime(scope.row.createdAt) }}</template>
+                        </el-table-column>
+                        <el-table-column label="用户" prop="userId" width="110" show-overflow-tooltip></el-table-column>
+                        <el-table-column label="操作类型" width="150">
+                            <template slot-scope="scope">
+                                <el-tag :type="auditOpTag(scope.row.operationType)" size="mini">{{ scope.row.operationType }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="资源" prop="resourceType" width="90"></el-table-column>
+                        <el-table-column label="资源ID" prop="resourceId" width="120" show-overflow-tooltip></el-table-column>
+                        <el-table-column label="详情" min-width="200">
+                            <template slot-scope="scope">
+                                <div class="detail-cell" :title="scope.row.operationDetail">{{ scope.row.operationDetail }}</div>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="状态" width="86">
+                            <template slot-scope="scope">
+                                <el-tag :type="auditStatusTag(scope.row.status)" size="mini">{{ scope.row.status }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="耗时" width="90">
+                            <template slot-scope="scope">{{ formatDuration(scope.row.durationMs) }}</template>
+                        </el-table-column>
+                        <el-table-column label="错误" min-width="160">
+                            <template slot-scope="scope">
+                                <div class="detail-cell" :title="scope.row.errorMessage">{{ scope.row.errorMessage || '-' }}</div>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+
+                    <div class="pagination-row">
+                        <el-pagination background layout="total, prev, pager, next, sizes"
+                                       :total="auditTotal" :current-page.sync="auditPage"
+                                       :page-size.sync="auditSize" :page-sizes="[20, 50, 100]"
+                                       @current-change="loadAudit" @size-change="loadAudit(1)"></el-pagination>
+                    </div>
+                </el-tab-pane>
+
+                <!-- ============ Token 监控 ============ -->
+                <el-tab-pane label="Token 监控" name="cost">
+                    <div class="filter-bar">
+                        <el-input v-model="costFilter.userId" placeholder="用户ID" clearable style="width:180px;"></el-input>
+                        <el-date-picker v-model="costFilter.dateRange" type="daterange"
+                                        range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"
+                                        value-format="yyyy-MM-dd" style="width:260px;"></el-date-picker>
+                        <el-button type="primary" icon="el-icon-search" @click="loadCost">查询</el-button>
+                        <el-button icon="el-icon-refresh" @click="resetCostFilter">重置</el-button>
+                    </div>
+
+                    <div class="summary-cards">
+                        <div class="summary-card">
+                            <div class="summary-label">调用次数</div>
+                            <div class="summary-value">{{ costSummary.count }}</div>
+                            <div class="summary-sub">LLM API 调用</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">输入 Tokens</div>
+                            <div class="summary-value">{{ formatNumber(costSummary.totalInputTokens) }}</div>
+                            <div class="summary-sub">含工具循环每轮</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">输出 Tokens</div>
+                            <div class="summary-value">{{ formatNumber(costSummary.totalOutputTokens) }}</div>
+                            <div class="summary-sub">模型生成</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">总 Tokens</div>
+                            <div class="summary-value">{{ formatNumber(costSummary.totalTokens) }}</div>
+                            <div class="summary-sub">input + output</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">总费用</div>
+                            <div class="summary-value cost-amount">¥{{ costSummary.totalCostCny }}</div>
+                            <div class="summary-sub">按定价表估算（人民币）</div>
+                        </div>
+                    </div>
+
+                    <el-table :data="costRows" v-loading="costLoading" stripe size="small" style="width:100%;">
+                        <el-table-column label="时间" width="168">
+                            <template slot-scope="scope">{{ formatTime(scope.row.createdAt) }}</template>
+                        </el-table-column>
+                        <el-table-column label="用户" prop="userId" width="110" show-overflow-tooltip></el-table-column>
+                        <el-table-column label="模型" prop="modelName" width="140" show-overflow-tooltip></el-table-column>
+                        <el-table-column label="场景" width="130">
+                            <template slot-scope="scope">
+                                <el-tag :type="costOpTag(scope.row.operationType)" size="mini">{{ scope.row.operationType }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="输入" width="100" align="right">
+                            <template slot-scope="scope">{{ formatNumber(scope.row.inputTokens) }}</template>
+                        </el-table-column>
+                        <el-table-column label="输出" width="100" align="right">
+                            <template slot-scope="scope">{{ formatNumber(scope.row.outputTokens) }}</template>
+                        </el-table-column>
+                        <el-table-column label="总计" width="110" align="right">
+                            <template slot-scope="scope">{{ formatNumber(scope.row.totalTokens) }}</template>
+                        </el-table-column>
+                        <el-table-column label="费用" width="100" align="right">
+                            <template slot-scope="scope"><span class="cost-amount">¥{{ scope.row.costCny }}</span></template>
+                        </el-table-column>
+                        <el-table-column label="会话ID" prop="conversationId" min-width="150" show-overflow-tooltip></el-table-column>
+                    </el-table>
+                </el-tab-pane>
+            </el-tabs>
+        </div>
+    </main>
+</div>
+
+<script src="lib/vue/vue.min.js"></script>
+<script src="lib/element-ui/index.js"></script>
+<script>
+    new Vue({
+        el: '#app',
+        data: function () {
+            return {
+                activeTab: 'audit',
+                // 审计
+                auditFilter: { userId: '', dateRange: null },
+                auditRows: [],
+                auditTotal: 0,
+                auditPage: 1,
+                auditSize: 20,
+                auditLoading: false,
+                // 成本
+                costFilter: { userId: '', dateRange: null },
+                costRows: [],
+                costSummary: { count: 0, totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, totalCost: '0.000000' },
+                costLoading: false
+            };
+        },
+        methods: {
+            goChat: function () {
+                window.location.href = 'chat.html';
+            },
+            // ---------- 审计 ----------
+            loadAudit: function (page) {
+                var self = this;
+                this.auditLoading = true;
+                var params = {
+                    page: (page || this.auditPage) - 1,
+                    size: this.auditSize
+                };
+                if (this.auditFilter.userId) params.userId = this.auditFilter.userId;
+                if (this.auditFilter.dateRange) {
+                    params.startDate = this.auditFilter.dateRange[0];
+                    params.endDate = this.auditFilter.dateRange[1];
+                }
+                fetch('/api/admin/audit/list?' + this.toQuery(params))
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        self.auditRows = data.content || [];
+                        self.auditTotal = data.totalElements || 0;
+                    })
+                    .catch(function () { self.$message.error('加载审计日志失败'); })
+                    .finally(function () { self.auditLoading = false; });
+            },
+            resetAuditFilter: function () {
+                this.auditFilter = { userId: '', dateRange: null };
+                this.loadAudit(1);
+            },
+            // ---------- 成本 ----------
+            loadCost: function () {
+                var self = this;
+                this.costLoading = true;
+                var params = {};
+                if (this.costFilter.userId) params.userId = this.costFilter.userId;
+                if (this.costFilter.dateRange) {
+                    params.startDate = this.costFilter.dateRange[0];
+                    params.endDate = this.costFilter.dateRange[1];
+                }
+                fetch('/api/admin/audit/cost?' + this.toQuery(params))
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        self.costRows = data.records || [];
+                        self.costSummary = {
+                            count: self.costRows.length,
+                            totalInputTokens: data.totalInputTokens || 0,
+                            totalOutputTokens: data.totalOutputTokens || 0,
+                            totalTokens: data.totalTokens || 0,
+                            totalCostCny: (data.totalCostCny || 0).toFixed(6)
+                        };
+                        self.costRows.forEach(function (row) {
+                            if (row.costCny != null) row.costCny = row.costCny.toFixed(6);
+                        });
+                    })
+                    .catch(function () { self.$message.error('加载成本统计失败'); })
+                    .finally(function () { self.costLoading = false; });
+            },
+            resetCostFilter: function () {
+                this.costFilter = { userId: '', dateRange: null };
+                this.loadCost();
+            },
+            // ---------- 工具 ----------
+            toQuery: function (obj) {
+                var parts = [];
+                for (var k in obj) {
+                    if (obj[k] !== '' && obj[k] != null) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+                }
+                return parts.join('&');
+            },
+            formatTime: function (iso) {
+                if (!iso) return '-';
+                var s = String(iso).replace('T', ' ').substring(0, 19);
+                return s;
+            },
+            formatDuration: function (ms) {
+                if (ms == null) return '-';
+                return ms >= 1000 ? (ms / 1000).toFixed(2) + ' s' : ms + ' ms';
+            },
+            formatNumber: function (n) {
+                if (n == null) return '0';
+                return Number(n).toLocaleString('en-US');
+            },
+            auditStatusTag: function (status) {
+                return status === 'SUCCESS' ? 'success' : (status === 'FAILED' ? 'danger' : 'info');
+            },
+            auditOpTag: function (op) {
+                var map = {
+                    'APPROVAL_SUBMIT': 'warning', 'APPROVAL_APPROVE': 'warning',
+                    'PRODUCT_UPDATE': 'danger', 'PRODUCT_QUERY': 'success', 'TOOL_CALL': 'success'
+                };
+                return map[op] || 'info';
+            },
+            costOpTag: function (op) {
+                var map = {
+                    'routing/classifier': 'warning',
+                    'multi/planner': 'warning', 'multi/replan': 'warning', 'multi/aggregator': 'info',
+                    'agent/skill': 'success', 'agent/gskill': 'success', 'agent/askill': 'success',
+                    'agent/mcp': 'warning', 'agent/rag': 'danger', 'agent/rag-rerank': 'danger',
+                    'agent/chat': 'info'
+                };
+                return map[op] || 'info';
+            }
+        },
+        mounted: function () {
+            var tab = new URLSearchParams(window.location.search).get('tab');
+            this.activeTab = tab === 'cost' ? 'cost' : 'audit';
+            if (this.activeTab === 'cost') {
+                this.loadCost();
+            } else {
+                this.loadAudit(1);
+            }
+        }
+    });
+</script>
+</body>
+</html>

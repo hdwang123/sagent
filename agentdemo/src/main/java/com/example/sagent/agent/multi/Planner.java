@@ -131,7 +131,7 @@ public class Planner {
                     "deepseek-chat",
                     usage.getPromptTokens(),
                     usage.getCompletionTokens(),
-                    "PLANNING",
+                    "multi/planner",
                     conversationId
             );
         }
@@ -205,7 +205,7 @@ public class Planner {
                     "deepseek-chat",
                     usage.getPromptTokens(),
                     usage.getCompletionTokens(),
-                    "REPLANNING",
+                    "multi/replan",
                     "replan"
             );
         }

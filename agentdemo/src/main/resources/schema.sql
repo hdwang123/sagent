@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS cost_record (
     input_tokens BIGINT NOT NULL,
     output_tokens BIGINT NOT NULL,
     total_tokens BIGINT NOT NULL,
-    cost_usd DECIMAL(10, 6) NOT NULL,
+    cost_cny DECIMAL(10, 6) NOT NULL,
     operation_type VARCHAR(32) NOT NULL,
     conversation_id VARCHAR(128),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

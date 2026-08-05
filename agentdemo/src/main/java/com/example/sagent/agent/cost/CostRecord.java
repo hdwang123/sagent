@@ -41,7 +41,7 @@ public class CostRecord {
     private Long totalTokens;
 
     @Column(nullable = false, precision = 10, scale = 6)
-    private BigDecimal costUsd;
+    private BigDecimal costCny;
 
     @Column(nullable = false, length = 32)
     private String operationType;
@@ -58,7 +58,7 @@ public class CostRecord {
 
     public CostRecord(Long id, String userId, String modelName,
                       Long inputTokens, Long outputTokens, Long totalTokens,
-                      BigDecimal costUsd, String operationType,
+                      BigDecimal costCny, String operationType,
                       String conversationId, LocalDateTime createdAt) {
         this.id = id;
         this.userId = userId;
@@ -66,7 +66,7 @@ public class CostRecord {
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
         this.totalTokens = totalTokens;
-        this.costUsd = costUsd;
+        this.costCny = costCny;
         this.operationType = operationType;
         this.conversationId = conversationId;
         this.createdAt = createdAt;
@@ -96,8 +96,8 @@ public class CostRecord {
         return totalTokens;
     }
 
-    public BigDecimal getCostUsd() {
-        return costUsd;
+    public BigDecimal getCostCny() {
+        return costCny;
     }
 
     public String getOperationType() {

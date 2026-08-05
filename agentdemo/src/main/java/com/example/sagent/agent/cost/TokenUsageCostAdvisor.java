@@ -19,7 +19,7 @@ import org.springframework.core.Ordered;
  * 逐轮调用 {@link CostMonitorService} 记录 token，保证多轮循环的 token 全部入账。
  * <p>
  * conversationId 与 operationType 由 Handler 通过 advisor param 传入：
- * {@code advisor.param(ChatMemory.CONVERSATION_ID, convId).param("operationType", "SKILL")}
+ * {@code advisor.param(ChatMemory.CONVERSATION_ID, convId).param("operationType", "agent/skill")}
  */
 public class TokenUsageCostAdvisor implements CallAdvisor {
 

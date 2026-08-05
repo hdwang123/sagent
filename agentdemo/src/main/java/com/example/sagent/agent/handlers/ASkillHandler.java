@@ -124,7 +124,7 @@ public class ASkillHandler implements AgentHandler {
                                     ChatMemory.CONVERSATION_ID,
                                     conversationId
                             )
-                            .param("operationType", "ASKILL"))
+                            .param("operationType", "agent/askill"))
                     .call();
             AgentResult result = callResponse.entity(AgentResult.class);
 
