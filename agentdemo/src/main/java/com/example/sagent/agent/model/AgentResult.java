@@ -1,5 +1,7 @@
 package com.example.sagent.agent.model;
 
+import tools.jackson.databind.annotation.JsonDeserialize;
+
 /**
  * 工具结构化返回对象
  * <p>
@@ -14,7 +16,10 @@ package com.example.sagent.agent.model;
  *   <li>4xx：业务失败（如资源不存在、参数非法）</li>
  *   <li>5xx：技术错误（如 IO 异常、外部服务不可达）</li>
  * </ul>
+ * 反序列化容错：LLM 结构化输出中 {@code code} 缺失、为 null 或非数字时，
+ * 由 {@link AgentResultDeserializer} 归一化为成功（200），避免原始类型 int 绑定 null 抛异常。
  */
+@JsonDeserialize(using = AgentResultDeserializer.class)
 public record AgentResult(
         /** 业务状态码，200=成功，4xx=业务失败，5xx=技术错误 */
         int code,
