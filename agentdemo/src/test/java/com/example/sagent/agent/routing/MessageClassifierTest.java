@@ -1,11 +1,13 @@
 package com.example.sagent.agent.routing;
 
+import com.example.sagent.agent.handlers.McpHandler;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
 import com.example.sagent.agent.skills.ASkill;
 import com.example.sagent.agent.skills.GSkill;
 import com.example.sagent.agent.skills.Skill;
+import com.example.sagent.agent.skills.ToolDescriptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -32,6 +34,7 @@ class MessageClassifierTest {
     private ChatClient.ChatClientRequestSpec mockSpec;
     private ChatClient.CallResponseSpec mockCallSpec;
     private ConversationHistory mockHistory;
+    private McpHandler mockMcpHandler;
     private MessageClassifier classifier;
 
     @BeforeEach
@@ -41,6 +44,8 @@ class MessageClassifierTest {
         mockSpec = mock(ChatClient.ChatClientRequestSpec.class);
         mockCallSpec = mock(ChatClient.CallResponseSpec.class);
         mockHistory = mock(ConversationHistory.class);
+        mockMcpHandler = mock(McpHandler.class);
+        when(mockMcpHandler.getToolDescriptors()).thenReturn(List.of());
 
         when(mockBuilder.build()).thenReturn(mockClient);
         when(mockClient.prompt()).thenReturn(mockSpec);
@@ -49,7 +54,7 @@ class MessageClassifierTest {
         when(mockSpec.call()).thenReturn(mockCallSpec);
         when(mockHistory.format(anyString())).thenReturn("");
 
-        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(), List.of(), List.of());
+        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(), List.of(), List.of(), mockMcpHandler);
     }
 
     @Test
@@ -124,7 +129,7 @@ class MessageClassifierTest {
         when(mockSkill.getDescription()).thenReturn("生成Markdown文档");
 
         // 重新构建 classifier，包含技能
-        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(mockSkill), List.of(), List.of());
+        classifier = new MessageClassifier(mockBuilder, mockHistory, List.of(mockSkill), List.of(), List.of(), mockMcpHandler);
         RouteDecision decision = new RouteDecision(AgentType.SKILL, "文档操作");
         when(mockCallSpec.entity(eq(RouteDecision.class), any(Consumer.class))).thenReturn(decision);
 
@@ -132,5 +137,28 @@ class MessageClassifierTest {
 
         // 验证 system prompt 包含技能描述
         verify(mockSpec).system(contains("document: 生成Markdown文档"));
+    }
+
+    @Test
+    void classify_withMcpTools_buildsPromptWithDynamicMcpList() {
+        // MCP 工具清单动态化：由 McpHandler 实时拉取，不再硬编码
+        when(mockMcpHandler.getToolDescriptors()).thenReturn(List.of(
+                new ToolDescriptor() {
+                    @Override public String getName() { return "get_weather"; }
+                    @Override public String getDescription() { return "获取指定城市天气"; }
+                },
+                new ToolDescriptor() {
+                    @Override public String getName() { return "calculator"; }
+                    @Override public String getDescription() { return "计算器（加减乘除）"; }
+                }
+        ));
+        RouteDecision decision = new RouteDecision(AgentType.MCP, "外部服务");
+        when(mockCallSpec.entity(eq(RouteDecision.class), any(Consumer.class))).thenReturn(decision);
+
+        classifier.classify("conv-1", "北京天气怎么样");
+
+        // 验证 system prompt 包含动态获取的 MCP 工具清单（替代硬编码）
+        verify(mockSpec).system(contains("get_weather: 获取指定城市天气"));
+        verify(mockSpec).system(contains("calculator: 计算器（加减乘除）"));
     }
 }

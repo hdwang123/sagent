@@ -4,6 +4,7 @@ import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.HandlerResult;
+import com.example.sagent.agent.skills.ToolDescriptor;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import org.slf4j.Logger;
@@ -13,11 +14,14 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * MCP处理器
@@ -103,6 +107,33 @@ public class McpHandler implements AgentHandler {
     @Override
     public AgentType type() {
         return AgentType.MCP;
+    }
+
+    /**
+     * 获取当前MCP Server暴露的所有工具描述，供MessageClassifier等组件使用。
+     * 首次调用会触发MCP客户端初始化；MCP Server不可用时返回空列表（分类器降级处理）。
+     *
+     * @return 工具描述列表
+     */
+    public List<ToolDescriptor> getToolDescriptors() {
+        try {
+            SyncMcpToolCallbackProvider provider = getMcpToolCallbackProvider();
+            return Arrays.stream(provider.getToolCallbacks())
+                    .map(cb -> new ToolDescriptor() {
+                        @Override
+                        public String getName() {
+                            return cb.getToolDefinition().name();
+                        }
+                        @Override
+                        public String getDescription() {
+                            return cb.getToolDefinition().description();
+                        }
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            LOGGER.warn("MCP工具描述获取失败: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     /**

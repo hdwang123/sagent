@@ -1,5 +1,6 @@
 package com.example.sagent.agent.routing;
 
+import com.example.sagent.agent.handlers.McpHandler;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
@@ -32,7 +33,7 @@ public class MessageClassifier {
 
     /**
      * 分类提示词模板
-     * SKILL/GSKILL/ASKILL 三个分类的工具清单由 {skillTools}/{gskillTools}/{askillTools} 占位符动态生成，
+     * SKILL/GSKILL/ASKILL/MCP 四个分类的工具清单由 {skillTools}/{gskillTools}/{askillTools}/{mcpTools} 占位符动态生成，
      * 保证与容器中实际注册的 Skill Bean 始终一致，避免人工维护描述导致与真实工具脱节
      */
     private static final String CLASSIFICATION_PROMPT_TEMPLATE = """
@@ -53,11 +54,7 @@ public class MessageClassifier {
             场景：查询Sagent介绍、项目说明、路由规则、使用手册、知识库文档等内部资料
 
             【MCP】外部服务工具（通过MCP协议调用）
-            - calculator(num1, num2, operation): 计算器（支持加减乘除）
-            - get_weather(city): 获取指定城市天气（北京/上海/广州/深圳/成都）
-            - get_stock_price(symbol): 获取股票实时价格（AAPL/GOOGL/MSFT/TSLA/NVDA/BABA/JD）
-            - get_system_info(): 获取系统信息（OS版本、Java版本、内存等）
-            - echo(message): 回显消息（测试用）
+            {mcpTools}
             场景：数学计算、天气查询、股票查询、系统信息获取、外部API调用等
 
             【ASKILL】审批技能工具（需要人工审批）
@@ -84,6 +81,7 @@ public class MessageClassifier {
     private final List<Skill> skills;
     private final List<GSkill> gSkills;
     private final List<ASkill> aSkills;
+    private final McpHandler mcpHandler;
 
     /**
      * 构造函数
@@ -93,19 +91,22 @@ public class MessageClassifier {
      * @param skills              SKILL 技能 Bean 列表（动态生成工具清单）
      * @param gSkills             GSKILL 技能 Bean 列表（动态生成工具清单）
      * @param aSkills             ASKILL 技能 Bean 列表（动态生成工具清单）
+     * @param mcpHandler          MCP 处理器（提供动态 MCP 工具清单）
      */
     public MessageClassifier(
             ChatClient.Builder chatClientBuilder,
             ConversationHistory conversationHistory,
             List<Skill> skills,
             List<GSkill> gSkills,
-            List<ASkill> aSkills
+            List<ASkill> aSkills,
+            McpHandler mcpHandler
     ) {
         this.chatClient = chatClientBuilder.build();
         this.conversationHistory = conversationHistory;
         this.skills = skills;
         this.gSkills = gSkills;
         this.aSkills = aSkills;
+        this.mcpHandler = mcpHandler;
     }
 
     /**
@@ -158,10 +159,19 @@ public class MessageClassifier {
      * 构建分类提示词：用容器中实际注册的技能 Bean 动态填充工具清单
      */
     private String buildClassificationPrompt() {
+        String mcpTools = "";
+        try {
+            List<ToolDescriptor> mcpDescriptors = mcpHandler.getToolDescriptors();
+            mcpTools = formatToolList(mcpDescriptors);
+        } catch (Exception e) {
+            LOGGER.warn("获取MCP工具列表失败，使用默认描述", e);
+            mcpTools = "- MCP工具列表获取失败，请检查MCP Server连接状态";
+        }
         return CLASSIFICATION_PROMPT_TEMPLATE
                 .replace("{skillTools}", formatToolList(skills))
                 .replace("{gskillTools}", formatToolList(gSkills))
-                .replace("{askillTools}", formatToolList(aSkills));
+                .replace("{askillTools}", formatToolList(aSkills))
+                .replace("{mcpTools}", mcpTools);
     }
 
     /**

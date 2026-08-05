@@ -37,11 +37,12 @@ public class ApprovalAspect {
 
     /**
      * 环绕通知：拦截 @Approval 标注的 @Tool 方法
-     * ApprovalBypass 激活时直接放行（审批面板重新执行）；否则创建 PENDING 记录，不执行原方法
+     * ApprovalBypass 激活时直接放行（审批面板重新执行）；否则创建 PENDING 记录，不执行原方法。
+     * 若 ThreadLocal 会话上下文丢失（线程复用/异常未清理），拒绝创建无归属的审批记录。
      *
      * @param pjp AOP 连接点
      * @param approval 方法上的 @Approval 注解
-     * @return 原方法返回值，或 "PENDING:记录ID" 字符串
+     * @return 原方法返回值，或 "PENDING:记录ID" 字符串，或上下文丢失时的错误提示
      * @throws Throwable 原方法抛出的异常
      */
     @Around("execution(* com.example.sagent.agent.skills.ASkill+.*(..)) && @annotation(approval)")
@@ -63,6 +64,12 @@ public class ApprovalAspect {
 
         // 从会话入口绑定的 conversationId 推导 userId，不依赖 ThreadLocal 传递
         String conversationId = ApprovalContext.getConversationId();
+        // P: 防御性校验：线程复用或异常未清理 ThreadLocal 时，上下文可能丢失。
+        // 此时拒绝创建审批记录，避免记录错误归属到 anonymous 用户（静默污染审批归属）。
+        if (conversationId == null || conversationId.isBlank()) {
+            LOGGER.error("审批上下文丢失：ThreadLocal 中无会话ID（线程复用或未清理），拒绝创建审批记录 method={}", methodName);
+            return "审批上下文丢失，无法提交审批，请重新发起请求";
+        }
         String userId = userIdResolver.resolve(conversationId);
         LOGGER.info("resolved userId={} from conversationId={}", userId, conversationId);
 
