@@ -4,10 +4,12 @@ import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentResultParser;
 import com.example.sagent.agent.storage.DownloadStorage;
 import tools.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.FileOutputStream;
@@ -44,12 +46,35 @@ public class WebPageDownloadSkill implements Skill {
     private final DownloadStorage downloadStorage;
     private final ObjectMapper objectMapper;
 
+    @Value("${app.playwright.preheat:true}")
+    private boolean preheatPlaywright;
+
     /** Playwright 环境就绪状态缓存，避免每次动态渲染/截图都重复启动浏览器探测 */
     private volatile Boolean playwrightAvailable = null;
 
     public WebPageDownloadSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper) {
         this.downloadStorage = downloadStorage;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 启动时异步预热 Playwright 环境：在守护线程中调用 isPlaywrightAvailable()，
+     * 利用 volatile + 双重检查锁缓存机制，预热完成后工具调用直接返回缓存结果，
+     * 避免首次工具调用阻塞 ~10s 等待 Chromium 启动。
+     */
+    @PostConstruct
+    public void preheatPlaywright() {
+        if (!preheatPlaywright) {
+            LOGGER.info("Playwright 预热已关闭（app.playwright.preheat=false）");
+            return;
+        }
+        Thread preheatThread = new Thread(() -> {
+            LOGGER.info("Playwright 异步预热开始");
+            isPlaywrightAvailable();
+            LOGGER.info("Playwright 异步预热完成");
+        }, "playwright-preheat");
+        preheatThread.setDaemon(true);
+        preheatThread.start();
     }
 
     @Override

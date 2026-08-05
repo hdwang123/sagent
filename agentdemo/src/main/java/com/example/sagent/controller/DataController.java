@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * 数据控制器
+ * 提供产品列表与审批记录列表两个只读查询端点，供前端数据展示
+ */
 @RestController
 @RequestMapping("/api")
 public class DataController {
@@ -22,6 +26,11 @@ public class DataController {
         this.approvalService = approvalService;
     }
 
+    /**
+     * 查询全部产品（按ID升序）
+     *
+     * @return 产品列表
+     */
     @GetMapping("/products")
     public List<Product> listProducts() {
         return jdbcClient.sql("select id, name, category, price, stock from products order by id")
@@ -34,6 +43,11 @@ public class DataController {
                 )).list();
     }
 
+    /**
+     * 查询全部审批记录（与 /ai/approvals/all 等价，提供 /api 前缀的便捷访问）
+     *
+     * @return 审批记录列表
+     */
     @GetMapping("/approvals")
     public List<ApprovalRecord> listApprovals() {
         return approvalService.listAll();

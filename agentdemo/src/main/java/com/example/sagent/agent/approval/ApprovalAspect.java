@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Parameter;
 
+/**
+ * 审批切面
+ * 拦截所有 ASkill 子类的 @Tool 方法调用：
+ * 审批面板直接调用时放行（ApprovalBypass），LLM 调用时创建 PENDING 记录并返回 "PENDING:记录ID"
+ */
 @Aspect
 @Component
 public class ApprovalAspect {
@@ -30,6 +35,15 @@ public class ApprovalAspect {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 环绕通知：拦截 @Approval 标注的 @Tool 方法
+     * ApprovalBypass 激活时直接放行（审批面板重新执行）；否则创建 PENDING 记录，不执行原方法
+     *
+     * @param pjp AOP 连接点
+     * @param approval 方法上的 @Approval 注解
+     * @return 原方法返回值，或 "PENDING:记录ID" 字符串
+     * @throws Throwable 原方法抛出的异常
+     */
     @Around("execution(* com.example.sagent.agent.skills.ASkill+.*(..)) && @annotation(approval)")
     public Object checkApproval(ProceedingJoinPoint pjp, Approval approval) throws Throwable {
         String methodName = pjp.getSignature().getName();

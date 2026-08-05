@@ -29,6 +29,14 @@ public class ApprovalRepository {
         this.jdbcClient = jdbcClient;
     }
 
+    /**
+     * 插入一条 PENDING 审批记录
+     *
+     * @param userId 用户ID
+     * @param toolName 工具方法名
+     * @param argsJson 参数JSON
+     * @return 新建的审批记录
+     */
     public ApprovalRecord createPending(String userId, String toolName, String argsJson) {
         String id = UUID.randomUUID().toString();
         var now = LocalDateTime.now();
@@ -37,32 +45,54 @@ public class ApprovalRepository {
         return new ApprovalRecord(id, userId, toolName, argsJson, "PENDING", null, null, now, null);
     }
 
+    /**
+     * 查找同用户、同工具、同参数的 PENDING 记录（取最近一条）
+     */
     public Optional<ApprovalRecord> findExisting(String userId, String toolName, String argsJson) {
         return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? and status = 'PENDING' order by create_time desc limit 1".formatted(COLS, TABLE))
                 .param(userId).param(toolName).param(argsJson)
                 .query(this::mapRecord).optional();
     }
 
+    /**
+     * 查询全部审批记录（按创建时间倒序）
+     */
     public List<ApprovalRecord> listAll() {
         return jdbcClient.sql("select %s from %s order by create_time desc".formatted(COLS, TABLE))
                 .query(this::mapRecord).list();
     }
 
+    /**
+     * 查询 PENDING 审批记录（按创建时间倒序）
+     */
     public List<ApprovalRecord> listPending() {
         return jdbcClient.sql("select %s from %s where status = 'PENDING' order by create_time desc".formatted(COLS, TABLE))
                 .query(this::mapRecord).list();
     }
 
+    /**
+     * 根据ID查询单条审批记录
+     */
     public Optional<ApprovalRecord> findById(String id) {
         return jdbcClient.sql("select %s from %s where id = ?".formatted(COLS, TABLE))
                 .param(id).query(this::mapRecord).optional();
     }
 
+    /**
+     * 更新审批状态与执行结果
+     *
+     * @param id 审批记录ID
+     * @param status 目标状态（APPROVED / REJECTED）
+     * @param result 工具执行结果或拒绝标记
+     */
     public void updateStatus(String id, String status, String result) {
         jdbcClient.sql("update %s set status = ?, result = ?, update_time = ? where id = ?".formatted(TABLE))
                 .param(status).param(result).param(LocalDateTime.now()).param(id).update();
     }
 
+    /**
+     * 查找已审批通过（APPROVED）的工具执行结果
+     */
     public Optional<String> getApprovedResult(String userId, String toolName, String argsJson) {
         return jdbcClient.sql("select %s from %s where user_id = ? and tool_name = ? and args_json = ? and status = 'APPROVED' order by create_time desc limit 1".formatted(COLS, TABLE))
                 .param(userId).param(toolName).param(argsJson)
@@ -71,6 +101,9 @@ public class ApprovalRepository {
                 .map(ApprovalRecord::result);
     }
 
+    /**
+     * ResultSet 行映射，将数据库行转换为 ApprovalRecord
+     */
     private ApprovalRecord mapRecord(ResultSet rs, int rowNum) throws SQLException {
         return new ApprovalRecord(
                 rs.getString("id"),
