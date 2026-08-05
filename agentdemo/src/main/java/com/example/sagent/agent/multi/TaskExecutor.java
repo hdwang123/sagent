@@ -16,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -236,7 +235,8 @@ public class TaskExecutor {
                     LOGGER.warn("无处理器: {}, 子任务[{}]降级为普通聊天", task.type(), task.goal());
                     return handlerRegistry.get(AgentType.CHAT).handle(conversationId, goal);
                 }
-                String subConversationId = UUID.randomUUID().toString();
+                // 复合会话ID：保留原始conversationId用于审批身份关联，附加task.id做ChatMemory隔离
+                String subConversationId = conversationId + "#" + task.id();
                 LOGGER.info("子Agent[{}, 会话{}] 第{}/{}次执行: {}",
                         task.type(), subConversationId, attempt, maxAttempts, task.goal());
                 HandlerResult result = handler.handle(subConversationId, goal);

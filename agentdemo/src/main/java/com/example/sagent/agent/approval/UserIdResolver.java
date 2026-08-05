@@ -23,7 +23,11 @@ public class UserIdResolver {
      */
     public String resolve(String conversationId) {
         if (conversationId == null) return "anonymous";
-        return cache.computeIfAbsent(conversationId, cid -> {
+        // 兼容多Agent编排的复合会话ID（格式：原始conversationId#taskId），提取#前的原始ID
+        String baseId = conversationId.contains("#")
+                ? conversationId.substring(0, conversationId.indexOf('#'))
+                : conversationId;
+        return cache.computeIfAbsent(baseId, cid -> {
             // 为每个 conversationId 分配固定的 userId（demo 场景）
             // 实际项目中应替换为真实用户体系
             return "user-" + Math.abs(cid.hashCode() % 10000);
