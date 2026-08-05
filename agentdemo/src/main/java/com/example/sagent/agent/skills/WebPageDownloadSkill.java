@@ -4,6 +4,8 @@ import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentResultParser;
 import com.example.sagent.agent.storage.DownloadStorage;
 import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -32,6 +34,8 @@ import java.util.zip.ZipOutputStream;
 @Component
 public class WebPageDownloadSkill implements Skill {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebPageDownloadSkill.class);
+
     private static final String NAME = "webPageDownload";
     private static final String DESCRIPTION = "下载网页内容、图片、视频、音频、文档，截取网页截图，文件压缩打包";
 
@@ -39,6 +43,9 @@ public class WebPageDownloadSkill implements Skill {
 
     private final DownloadStorage downloadStorage;
     private final ObjectMapper objectMapper;
+
+    /** Playwright 环境就绪状态缓存，避免每次动态渲染/截图都重复启动浏览器探测 */
+    private volatile Boolean playwrightAvailable = null;
 
     public WebPageDownloadSkill(DownloadStorage downloadStorage, ObjectMapper objectMapper) {
         this.downloadStorage = downloadStorage;
@@ -88,6 +95,49 @@ public class WebPageDownloadSkill implements Skill {
         return folderPath;
     }
 
+    /**
+     * 检查 Playwright 浏览器环境是否就绪（含 Chromium 二进制是否已安装）。
+     * 首次调用会尝试启动一次 headless Chromium 探测，结果缓存避免重复开销。
+     *
+     * @return true 表示可正常使用动态渲染/截图；false 表示缺少 Chromium 二进制或 Playwright 驱动
+     */
+    private boolean isPlaywrightAvailable() {
+        if (playwrightAvailable != null) {
+            return playwrightAvailable;
+        }
+        synchronized (this) {
+            if (playwrightAvailable != null) {
+                return playwrightAvailable;
+            }
+            try (com.microsoft.playwright.Playwright playwright = com.microsoft.playwright.Playwright.create();
+                 com.microsoft.playwright.Browser browser = playwright.chromium().launch(
+                         new com.microsoft.playwright.BrowserType.LaunchOptions().setHeadless(true))) {
+                playwrightAvailable = true;
+                LOGGER.info("Playwright 环境检查通过，Chromium 可用");
+            } catch (Exception e) {
+                playwrightAvailable = false;
+                LOGGER.warn("Playwright 环境不可用，动态渲染/截图功能将降级: {}", e.getMessage());
+            }
+            return playwrightAvailable;
+        }
+    }
+
+    /**
+     * 动态渲染/截图前的环境就绪检查。Playwright 不可用时返回降级提示 JSON（code=500），可用时返回 null。
+     * 供需要 Playwright 的 @Tool 方法在入口处调用，实现友好降级而非抛异常。
+     *
+     * @return 降级提示的 AgentResult JSON 字符串，或 null 表示环境就绪可继续执行
+     */
+    private String checkPlaywrightOrDegraded() {
+        if (!isPlaywrightAvailable()) {
+            return AgentResultParser.toJson(objectMapper, AgentResult.CODE_BUSINESS_ERROR,
+                    "此功能需要 Playwright 浏览器环境，当前未就绪。请执行 " +
+                    "`mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args=\"install chromium\"` " +
+                    "安装 Chromium 后重试；若无需动态渲染，可使用 dynamic=false 走静态抓取。");
+        }
+        return null;
+    }
+
     private static final Pattern IMG_SRC_PATTERN = Pattern.compile("<img[^>]+src\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern SRCSET_PATTERN = Pattern.compile("<img[^>]+srcset\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern VIDEO_SRC_PATTERN = Pattern.compile("<video[^>]+src\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
@@ -102,6 +152,12 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "是否使用动态渲染（适用于SPA等JavaScript渲染的网站）") boolean dynamic,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        if (dynamic) {
+            String degraded = checkPlaywrightOrDegraded();
+            if (degraded != null) {
+                return degraded;
+            }
+        }
         String result = downloadMediaFromWebPage(url, folderName, this::extractImageUrls, "image_", ".jpg", "图片", dynamic);
 
         if (compress) {
@@ -119,6 +175,12 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "是否使用动态渲染（适用于SPA等JavaScript渲染的网站）") boolean dynamic,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        if (dynamic) {
+            String degraded = checkPlaywrightOrDegraded();
+            if (degraded != null) {
+                return degraded;
+            }
+        }
         String result = downloadMediaFromWebPage(url, folderName, this::extractVideoUrls, "video_", ".mp4", "视频", dynamic);
 
         if (compress) {
@@ -136,6 +198,12 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "是否使用动态渲染（适用于SPA等JavaScript渲染的网站）") boolean dynamic,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        if (dynamic) {
+            String degraded = checkPlaywrightOrDegraded();
+            if (degraded != null) {
+                return degraded;
+            }
+        }
         String result = downloadMediaFromWebPage(url, folderName, this::extractAudioUrls, "audio_", ".mp3", "音频", dynamic);
 
         if (compress) {
@@ -153,6 +221,12 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "是否使用动态渲染（适用于SPA等JavaScript渲染的网站）") boolean dynamic,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        if (dynamic) {
+            String degraded = checkPlaywrightOrDegraded();
+            if (degraded != null) {
+                return degraded;
+            }
+        }
         String result = downloadMediaFromWebPage(url, folderName, this::extractDocumentUrls, "document_", ".pdf", "文档", dynamic);
 
         if (compress) {
@@ -170,6 +244,13 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "是否使用动态渲染（适用于SPA等JavaScript渲染的网站）") boolean dynamic,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        if (dynamic) {
+            String degraded = checkPlaywrightOrDegraded();
+            if (degraded != null) {
+                return degraded;
+            }
+        }
+
         Path folderPath = getValidatedFolderPath(folderName);
 
         try {
@@ -219,6 +300,11 @@ public class WebPageDownloadSkill implements Skill {
             @ToolParam(description = "保存的文件夹名称") String folderName,
             @ToolParam(description = "是否压缩打包") boolean compress
     ) {
+        String degraded = checkPlaywrightOrDegraded();
+        if (degraded != null) {
+            return degraded;
+        }
+
         Path folderPath = getValidatedFolderPath(folderName);
 
         try (com.microsoft.playwright.Playwright playwright = com.microsoft.playwright.Playwright.create();

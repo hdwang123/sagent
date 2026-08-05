@@ -17,6 +17,14 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * 企业技能处理器
+ * <p>
+ * 处理固定技能任务（如网页下载、文档生成）。
+ * 提示词约束 LLM 单次只调用一个工具（框架仍走工具调用循环），
+ * 工具通过 {@code @Tool(returnDirect=true)} 直接返回 {@link com.example.sagent.agent.model.AgentResult} 的 JSON 字符串，
+ * 由 {@link AgentResultParser} 反序列化为 {@link HandlerResult}。
+ */
 @Component
 public class SkillHandler implements AgentHandler {
 
@@ -36,6 +44,14 @@ public class SkillHandler implements AgentHandler {
     private final List<Skill> skills;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造函数
+     *
+     * @param chatClientBuilder ChatClient构建器
+     * @param toolMemoryAdvisor 工具类小窗口记忆顾问（4条消息，防止LLM复述历史数据）
+     * @param skills            企业技能列表
+     * @param objectMapper      Jackson ObjectMapper（用于 returnDirect 场景的 AgentResult JSON 解析）
+     */
     public SkillHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
@@ -49,11 +65,26 @@ public class SkillHandler implements AgentHandler {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 获取处理器类型
+     *
+     * @return AgentType.SKILL
+     */
     @Override
     public AgentType type() {
         return AgentType.SKILL;
     }
 
+    /**
+     * 处理企业技能消息
+     * <p>
+     * 工具以 {@code @Tool(returnDirect=true)} 声明，调用后直接返回 {@link AgentResult} 的 JSON 字符串，
+     * 由 {@link AgentResultParser#toHandlerResult} 解析为 {@link HandlerResult}（含 code/content 提取）。
+     *
+     * @param conversationId 会话ID
+     * @param message        用户消息
+     * @return HandlerResult处理结果
+     */
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {

@@ -182,6 +182,11 @@ public class TaskExecutor {
 
     /**
      * 止损公共逻辑：把指定id集合的子任务标记为失败（写入error结果）。
+     *
+     * @param results 结果集（会被直接写入，key=子任务id）
+     * @param plan    任务计划（提供 id→Task 索引，用于取 goal 作为可读标签）
+     * @param ids     需标记失败的子任务id集合
+     * @param reason  失败原因（写入 answer 文本，便于排查）
      */
     private void markFailed(Map<String, HandlerResult> results,
                             TaskPlan plan, Set<String> ids, String reason) {
@@ -194,6 +199,15 @@ public class TaskExecutor {
 
     /**
      * 异步调度单个子任务，附带超时与异常兜底。
+     * <p>
+     * 在线程池中执行 {@link #runSubAgent}，并通过 {@code orTimeout} 设置超时；
+     * 超时或异常时通过 {@code exceptionally} 降级为错误结果，不中断整轮编排。
+     *
+     * @param conversationId 会话ID（用于构建子任务的复合会话ID）
+     * @param task           待执行的子任务
+     * @param results        已完成子任务的结果（供依赖注入使用）
+     * @param plan           任务计划（提供 id→Task 索引）
+     * @return 子任务id → 执行结果 的映射条目
      */
     private CompletableFuture<Map.Entry<String, HandlerResult>> scheduleTask(
             String conversationId, Task task,
@@ -216,9 +230,16 @@ public class TaskExecutor {
 
     /**
      * 执行单个子任务：复用现有Handler，使用独立会话ID避免污染主会话。
+     * <p>
      * 若任务声明了依赖，将所有依赖任务的执行结果一并拼入goal。
      * 整个方法体被 try-catch 包裹：任何异常都降级为错误结果返回，不向上抛出。
      * P1-4: 4xx 业务失败（如资源不存在）重试无意义，直接返回；仅 5xx 技术错误才重试。
+     *
+     * @param conversationId 原始会话ID（与子任务id拼接为"原ID#taskId"复合会话ID，隔离ChatMemory同时保留审批身份）
+     * @param task           待执行的子任务
+     * @param results        已完成子任务的结果（供 {@link #buildGoalWithDeps} 拼接依赖结果）
+     * @param plan           任务计划（提供 id→Task 索引）
+     * @return 子任务执行结果（成功或错误降级结果，不为null）
      */
     private HandlerResult runSubAgent(String conversationId, Task task,
                                       Map<String, HandlerResult> results, TaskPlan plan) {
@@ -265,6 +286,11 @@ public class TaskExecutor {
 
     /**
      * 构建子任务goal：若声明了依赖，将依赖任务的执行结果拼入goal，供子Agent参考。
+     *
+     * @param task    当前子任务
+     * @param results 已完成子任务的结果（按依赖id查找）
+     * @param plan    任务计划（提供 id→Task 索引，用于取依赖任务的 goal 作为可读标签）
+     * @return 拼接了依赖结果的 goal 文本；无依赖时返回原始 goal
      */
     String buildGoalWithDeps(Task task, Map<String, HandlerResult> results, TaskPlan plan) {
         String goal = task.goal();

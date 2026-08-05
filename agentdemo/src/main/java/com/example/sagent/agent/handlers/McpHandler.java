@@ -52,6 +52,13 @@ public class McpHandler implements AgentHandler {
     private final String mcpServerUrl;
     private volatile SyncMcpToolCallbackProvider mcpToolCallbackProvider;
 
+    /**
+     * 构造函数
+     *
+     * @param chatClientBuilder ChatClient构建器
+     * @param toolMemoryAdvisor 工具类小窗口记忆顾问（4条消息，防止LLM复述历史数据）
+     * @param mcpServerUrl      MCP Server 地址（由 mcp.server.url 配置，默认 http://localhost:8081/mcp）
+     */
     public McpHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
@@ -64,6 +71,14 @@ public class McpHandler implements AgentHandler {
         this.mcpServerUrl = mcpServerUrl;
     }
 
+    /**
+     * 延迟初始化 MCP 客户端（双重检查锁定）。
+     * <p>
+     * 不在应用启动时连接 MCP Server，避免 MCP Server 未就绪导致应用启动失败。
+     * 首次 MCP 请求时才建立连接并初始化；连接失败时抛出异常，由 {@link #handle} 捕获返回友好提示。
+     *
+     * @return 已初始化的 MCP 工具回调提供器
+     */
     private SyncMcpToolCallbackProvider getMcpToolCallbackProvider() {
         if (mcpToolCallbackProvider == null) {
             synchronized (this) {
@@ -80,11 +95,26 @@ public class McpHandler implements AgentHandler {
         return mcpToolCallbackProvider;
     }
 
+    /**
+     * 获取处理器类型
+     *
+     * @return AgentType.MCP
+     */
     @Override
     public AgentType type() {
         return AgentType.MCP;
     }
 
+    /**
+     * 处理 MCP 外部服务消息
+     * <p>
+     * 首次调用触发 MCP 客户端延迟初始化；连接失败时返回 code=500 友好提示，不阻塞其他功能。
+     * 通过 {@code .entity(AgentResult.class)} 强制 LLM 输出结构化 JSON，由 Spring AI 自动反序列化。
+     *
+     * @param conversationId 会话ID
+     * @param message        用户消息
+     * @return HandlerResult处理结果
+     */
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {

@@ -18,6 +18,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * 审批技能处理器
+ * <p>
+ * 处理需要人工审批的敏感操作（如删除产品、修改价格/库存）。
+ * 通过 {@link ApprovalContext}（ThreadLocal）向 {@code ApprovalAspect} 传递当前会话ID与用户ID，
+ * 使 AOP 切面能将 PENDING 审批记录与发起人关联。处理完成后在 finally 中清理 ThreadLocal。
+ */
 @Component
 public class ASkillHandler implements AgentHandler {
 
@@ -50,6 +57,14 @@ public class ASkillHandler implements AgentHandler {
     private final List<ASkill> skills;
     private final UserIdResolver userIdResolver;
 
+    /**
+     * 构造函数
+     *
+     * @param chatClientBuilder ChatClient构建器
+     * @param toolMemoryAdvisor 工具类小窗口记忆顾问（4条消息，防止LLM复述历史数据）
+     * @param skills            审批技能列表
+     * @param userIdResolver    用户ID解析器（从复合会话ID中提取原始用户标识，用于审批身份关联）
+     */
     public ASkillHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("toolChatMemoryAdvisor") MessageChatMemoryAdvisor toolMemoryAdvisor,
@@ -63,11 +78,27 @@ public class ASkillHandler implements AgentHandler {
         this.userIdResolver = userIdResolver;
     }
 
+    /**
+     * 获取处理器类型
+     *
+     * @return AgentType.ASKILL
+     */
     @Override
     public AgentType type() {
         return AgentType.ASKILL;
     }
 
+    /**
+     * 处理审批技能消息
+     * <p>
+     * 先将当前会话ID和用户ID写入 {@link ApprovalContext}（ThreadLocal），
+     * 供 AOP 切面在拦截 {@code @Approval} 方法时关联审批发起人；
+     * 处理完成后在 finally 中清理 ThreadLocal，避免线程复用导致身份串号。
+     *
+     * @param conversationId 会话ID（多Agent编排时为"原ID#taskId"复合格式，UserIdResolver 会提取#前的原始用户ID）
+     * @param message        用户消息
+     * @return HandlerResult处理结果
+     */
     @Override
     public HandlerResult handle(String conversationId, String message) {
         try {

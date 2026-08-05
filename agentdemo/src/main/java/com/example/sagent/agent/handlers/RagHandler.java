@@ -22,6 +22,12 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * RAG 知识库检索处理器
+ * <p>
+ * 流程：基于会话历史改写检索查询 → 混合检索（向量+关键词）召回 Top-K → LLM 重排序精筛 → 拼接上下文调用 LLM 生成回答。
+ * 检索为空时返回 code=404（业务失败），让编排层能识别 RAG 软失败而非当作成功。
+ */
 @Component
 public class RagHandler implements AgentHandler {
 
@@ -36,7 +42,7 @@ public class RagHandler implements AgentHandler {
             评估以下文档与问题的相关性，为每个文档打分（0-10的整数，10表示最相关）。
             每行输出一个分数，格式为：序号:分数
             只输出分数行，不要其他内容。
-            
+
             问题：{question}
             文档列表：
             {documents}
@@ -51,6 +57,17 @@ public class RagHandler implements AgentHandler {
     private final VectorKnowledgeRetriever knowledgeRetriever;
     private final ConversationHistory conversationHistory;
 
+    /**
+     * 构造函数
+     *
+     * @param chatClientBuilder    ChatClient构建器（用于生成回答）
+     * @param memoryAdvisor        消息聊天记忆顾问（大窗口，保证多轮对话连贯）
+     * @param knowledgeRetriever   向量知识库检索器
+     * @param conversationHistory  会话历史管理（用于检索查询改写）
+     * @param chatModel            ChatModel（用于构建独立的 rerankClient）
+     * @param hybridTopK           混合检索召回数量（由 agent.rag.hybrid-top-k 配置，默认10）
+     * @param rerankedTopK         LLM 重排序后保留数量（由 agent.rag.reranked-top-k 配置，默认3）
+     */
     public RagHandler(
             ChatClient.Builder chatClientBuilder,
             @Qualifier("messageChatMemoryAdvisor") MessageChatMemoryAdvisor memoryAdvisor,

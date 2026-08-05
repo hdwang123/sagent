@@ -15,6 +15,16 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 消息分类器
+ * <p>
+ * 调用 LLM 对用户消息进行分类，输出 {@link RouteDecision}（类型 + 分类理由）。
+ * 分类优先级：SKILL > GSKILL > ASKILL > RAG > MCP > CHAT。
+ * <p>
+ * 工具清单由容器中实际注册的 Skill/GSkill/ASkill Bean 动态生成，保证与真实工具一致。
+ * 分类器读取历史消息理解上下文，但不使用会写入消息的记忆 Advisor，避免 RouteDecision 污染正式聊天记录。
+ * 分类失败或返回空时降级为 CHAT，保证可用性。
+ */
 @Service
 public class MessageClassifier {
 
@@ -75,6 +85,15 @@ public class MessageClassifier {
     private final List<GSkill> gSkills;
     private final List<ASkill> aSkills;
 
+    /**
+     * 构造函数
+     *
+     * @param chatClientBuilder   ChatClient构建器
+     * @param conversationHistory 会话历史管理（读取历史消息理解上下文指代）
+     * @param skills              SKILL 技能 Bean 列表（动态生成工具清单）
+     * @param gSkills             GSKILL 技能 Bean 列表（动态生成工具清单）
+     * @param aSkills             ASKILL 技能 Bean 列表（动态生成工具清单）
+     */
     public MessageClassifier(
             ChatClient.Builder chatClientBuilder,
             ConversationHistory conversationHistory,
@@ -89,6 +108,16 @@ public class MessageClassifier {
         this.aSkills = aSkills;
     }
 
+    /**
+     * 对用户消息进行分类
+     * <p>
+     * 读取会话历史拼入分类输入，让 LLM 理解"它/这个"等指代；
+     * 分类失败或返回空时降级为 CHAT，保证可用性。
+     *
+     * @param conversationId 会话ID
+     * @param message        用户消息
+     * @return 路由决策（类型 + 分类理由），失败时返回 CHAT 兜底决策
+     */
     public RouteDecision classify(String conversationId, String message) {
         long start = System.nanoTime();
         try {
@@ -147,6 +176,9 @@ public class MessageClassifier {
                 .collect(Collectors.joining("\n"));
     }
 
+    /**
+     * 兜底决策：分类模型未返回有效结果时，降级为普通聊天
+     */
     private RouteDecision fallbackDecision() {
         return new RouteDecision(AgentType.CHAT, "分类模型未返回有效结果，已使用普通聊天兜底");
     }
