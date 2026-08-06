@@ -155,7 +155,8 @@ public class MessageClassifier {
             if (usage != null && usage.getPromptTokens() != null) {
                 costMonitorService.saveCostRecord(
                         conversationId,
-                        "deepseek-chat",
+                        "deepseek-v4-flash",
+                        usage.getCacheReadInputTokens(),
                         usage.getPromptTokens(),
                         usage.getCompletionTokens(),
                         "routing/classifier",

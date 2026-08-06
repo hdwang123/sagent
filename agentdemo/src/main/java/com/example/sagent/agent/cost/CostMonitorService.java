@@ -31,17 +31,32 @@ public class CostMonitorService {
 
     /**
      * 异步保存成本记录
+     * <p>
+     * 输入 token 分缓存命中（cacheReadInputTokens）与未命中两档计费：
+     * 命中部分按缓存命中单价，其余按未命中单价，命中价通常远低于未命中价，
+     * 拆分计费可避免多轮对话/Agent 编排场景下成本被严重高估。
+     *
+     * @param userId               用户ID（多 Agent 子任务场景为会话ID）
+     * @param modelName            模型名称
+     * @param cacheReadInputTokens 缓存命中的输入 token 数（可为 null，按 0 处理）
+     * @param inputTokens          输入 token 总数（含缓存命中）
+     * @param outputTokens         输出 token 数
+     * @param operationType        场景标识（agent/skill、multi/planner 等）
+     * @param conversationId       会话ID
      */
     @Async
-    public void saveCostRecord(String userId, String modelName,
+    public void saveCostRecord(String userId, String modelName, Long cacheReadInputTokens,
                                 long inputTokens, long outputTokens,
                                 String operationType, String conversationId) {
         try {
             ModelPricing.Pricing p = modelPricing.get(modelName);
 
+            long cacheRead = cacheReadInputTokens != null ? Math.min(cacheReadInputTokens, inputTokens) : 0;
+            long cacheMiss = inputTokens - cacheRead;
             long totalTokens = inputTokens + outputTokens;
-            BigDecimal inputCost = p.inputPricePer1k()
-                    .multiply(BigDecimal.valueOf(inputTokens))
+            BigDecimal inputCost = p.cacheReadInputPricePer1k()
+                    .multiply(BigDecimal.valueOf(cacheRead))
+                    .add(p.inputPricePer1k().multiply(BigDecimal.valueOf(cacheMiss)))
                     .divide(BigDecimal.valueOf(1000));
             BigDecimal outputCost = p.outputPricePer1k()
                     .multiply(BigDecimal.valueOf(outputTokens))
@@ -52,6 +67,7 @@ public class CostMonitorService {
                     null,
                     userId,
                     modelName,
+                    cacheRead,
                     inputTokens,
                     outputTokens,
                     totalTokens,
@@ -61,9 +77,9 @@ public class CostMonitorService {
                     LocalDateTime.now());
 
             costRecordRepository.save(record);
-            LOGGER.info("Cost record saved: userId={}, model={}, input={}, output={}, total={}, cost=¥{}",
+            LOGGER.info("Cost record saved: userId={}, model={}, input={}(cacheRead={}), output={}, total={}, cost=¥{}",
                     record.getUserId(), record.getModelName(),
-                    inputTokens, outputTokens, totalTokens, totalCostCny);
+                    inputTokens, cacheRead, outputTokens, totalTokens, totalCostCny);
         } catch (Exception e) {
             LOGGER.error("Cost record save failed: userId={}, model={}, operation={}, conversationId={}",
                     userId, modelName, operationType, conversationId, e);
@@ -89,8 +105,9 @@ public class CostMonitorService {
         if (usage == null || usage.getPromptTokens() == null) {
             return;
         }
-        String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-chat";
-        saveCostRecord(conversationId, modelName, usage.getPromptTokens(),
+        String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-v4-flash";
+        saveCostRecord(conversationId, modelName, usage.getCacheReadInputTokens(),
+                usage.getPromptTokens(),
                 usage.getCompletionTokens(), operationType, conversationId);
     }
 

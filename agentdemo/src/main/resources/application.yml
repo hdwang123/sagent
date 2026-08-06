@@ -33,7 +33,7 @@ spring:
       chat:
         base-url: https://api.deepseek.com/v1
         options:
-          model: deepseek-chat
+          model: deepseek-v4-flash
 mcp:
   server:
     url: http://localhost:8081/mcp
@@ -59,18 +59,17 @@ agent:
     pricing:
       # 模型 token 定价（人民币 / 每 1000 tokens，平时价）
       # 来源：DeepSeek 官方定价 api-docs.deepseek.com（2026-08，高峰时段价格为平时 2 倍）
+      # 输入 token 分缓存命中（cache-read）与未命中两档计费，命中价约为未命中的 1/50
       default-model: deepseek-v4-flash
       models:
         deepseek-v4-flash:
           input-price-per-1k: 0.001
           output-price-per-1k: 0.002
+          cache-read-input-price-per-1k: 0.00002
         deepseek-v4-pro:
           input-price-per-1k: 0.003
           output-price-per-1k: 0.006
-        # deepseek-chat 旧别名已映射至 deepseek-v4-flash 定价
-        deepseek-chat:
-          input-price-per-1k: 0.001
-          output-price-per-1k: 0.002
+          cache-read-input-price-per-1k: 0.000025
 
 app:
   playwright:

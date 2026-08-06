@@ -32,7 +32,7 @@ class TokenUsageCostAdvisorTest {
         ChatResponse chatResponse = mock(ChatResponse.class);
         ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
         Usage usage = mock(Usage.class);
-        when(metadata.getModel()).thenReturn("deepseek-chat");
+        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
         when(metadata.getUsage()).thenReturn(usage);
         when(usage.getPromptTokens()).thenReturn(10);
         when(usage.getCompletionTokens()).thenReturn(5);

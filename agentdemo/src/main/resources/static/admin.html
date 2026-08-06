@@ -286,6 +286,14 @@
                         <el-table-column label="输入" width="100" align="right">
                             <template slot-scope="scope">{{ formatNumber(scope.row.inputTokens) }}</template>
                         </el-table-column>
+                        <el-table-column label="缓存命中" width="120" align="right">
+                            <template slot-scope="scope">
+                                <el-tag v-if="scope.row.cacheReadInputTokens > 0" type="success" size="mini">
+                                    是 {{ formatNumber(scope.row.cacheReadInputTokens) }}
+                                </el-tag>
+                                <span v-else class="detail-cell">否</span>
+                            </template>
+                        </el-table-column>
                         <el-table-column label="输出" width="100" align="right">
                             <template slot-scope="scope">{{ formatNumber(scope.row.outputTokens) }}</template>
                         </el-table-column>

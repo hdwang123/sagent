@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS cost_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL,
     model_name VARCHAR(64) NOT NULL,
+    cache_read_input_tokens BIGINT,
     input_tokens BIGINT NOT NULL,
     output_tokens BIGINT NOT NULL,
     total_tokens BIGINT NOT NULL,

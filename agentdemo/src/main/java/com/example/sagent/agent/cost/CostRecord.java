@@ -31,6 +31,10 @@ public class CostRecord {
     @Column(nullable = false, length = 64)
     private String modelName;
 
+    /** 缓存命中的输入 token 数（null 表示无命中信息） */
+    @Column(name = "cache_read_input_tokens")
+    private Long cacheReadInputTokens;
+
     @Column(nullable = false)
     private Long inputTokens;
 
@@ -57,12 +61,13 @@ public class CostRecord {
     }
 
     public CostRecord(Long id, String userId, String modelName,
-                      Long inputTokens, Long outputTokens, Long totalTokens,
+                      Long cacheReadInputTokens, Long inputTokens, Long outputTokens, Long totalTokens,
                       BigDecimal costCny, String operationType,
                       String conversationId, LocalDateTime createdAt) {
         this.id = id;
         this.userId = userId;
         this.modelName = modelName;
+        this.cacheReadInputTokens = cacheReadInputTokens;
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
         this.totalTokens = totalTokens;
@@ -82,6 +87,10 @@ public class CostRecord {
 
     public String getModelName() {
         return modelName;
+    }
+
+    public Long getCacheReadInputTokens() {
+        return cacheReadInputTokens;
     }
 
     public Long getInputTokens() {

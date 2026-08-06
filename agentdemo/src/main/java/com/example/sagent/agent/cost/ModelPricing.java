@@ -58,7 +58,7 @@ public class ModelPricing {
     /**
      * 获取指定模型的定价信息（容错匹配）
      * <p>
-     * 匹配顺序：精确匹配 → 大小写不敏感前缀匹配（如 deepseek-chat-xxx 命中 deepseek-chat）→
+     * 匹配顺序：精确匹配 → 大小写不敏感前缀匹配（如 deepseek-v4-flash-xxx 命中 deepseek-v4-flash）→
      * 默认兜底模型定价。保证任何模型名都能得到定价，避免 token 记录被丢弃。
      *
      * @param modelName 模型名称（可能为 null）
@@ -82,21 +82,23 @@ public class ModelPricing {
     }
 
     /**
-     * 默认兜底定价：优先取配置的默认模型，否则返回空定价（输入输出均为 0）。
+     * 默认兜底定价：优先取配置的默认模型，否则返回空定价（各项均为 0）。
      *
      * @return 兜底定价
      */
     private Pricing fallback() {
         Pricing p = models.get(defaultModel);
-        return p != null ? p : new Pricing(BigDecimal.ZERO, BigDecimal.ZERO);
+        return p != null ? p : new Pricing(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     /**
      * 模型定价记录
      *
-     * @param inputPricePer1k  输入 token 单价（人民币/每 1000 tokens）
-     * @param outputPricePer1k 输出 token 单价（人民币/每 1000 tokens）
+     * @param inputPricePer1k           输入 token（缓存未命中）单价（人民币/每 1000 tokens）
+     * @param outputPricePer1k          输出 token 单价（人民币/每 1000 tokens）
+     * @param cacheReadInputPricePer1k  输入 token（缓存命中）单价（人民币/每 1000 tokens）
      */
-    public record Pricing(BigDecimal inputPricePer1k, BigDecimal outputPricePer1k) {
+    public record Pricing(BigDecimal inputPricePer1k, BigDecimal outputPricePer1k,
+                          BigDecimal cacheReadInputPricePer1k) {
     }
 }

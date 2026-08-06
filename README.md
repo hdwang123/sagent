@@ -195,7 +195,7 @@ mvn test -pl agentdemo
 DEEPSEEK_API_KEY
 ```
 
-默认模型 `deepseek-chat`。
+默认模型 `deepseek-v4-flash`。
 
 **切换 OpenRouter**：将 `application.yml` 中 `spring.ai.openai` 配置的 DeepSeek 部分注释掉，取消 OpenRouter 部分注释，然后设置：
 

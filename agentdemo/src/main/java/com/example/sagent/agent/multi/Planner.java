@@ -128,7 +128,8 @@ public class Planner {
         if (usage != null && usage.getPromptTokens() != null) {
             costMonitorService.saveCostRecord(
                     conversationId,
-                    "deepseek-chat",
+                    "deepseek-v4-flash",
+                    usage.getCacheReadInputTokens(),
                     usage.getPromptTokens(),
                     usage.getCompletionTokens(),
                     "multi/planner",
@@ -202,7 +203,8 @@ public class Planner {
         if (usage != null && usage.getPromptTokens() != null) {
             costMonitorService.saveCostRecord(
                     "replan",  // conversationId 用 replan 代替
-                    "deepseek-chat",
+                    "deepseek-v4-flash",
+                    usage.getCacheReadInputTokens(),
                     usage.getPromptTokens(),
                     usage.getCompletionTokens(),
                     "multi/replan",
