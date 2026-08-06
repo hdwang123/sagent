@@ -2,11 +2,18 @@ package com.example.sagent.agent.cost;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClientAttributes;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -96,7 +103,7 @@ public class CostMonitorService {
     /**
      * 便捷方法：从 ChatClient 请求/响应提取输入输出内容与 usage 异步保存成本记录（null-safe）。
      * 由 {@link TokenUsageCostAdvisor} 调用，prompt 取 {@link ChatClientRequest#prompt()} 的完整内容，
-     * completion 取 {@link ChatResponse#getResult()} 的 assistant 文本，调用点无需重复解析。
+     * completion 取 {@link ChatResponse#getResults()} 全部 generation 的文本与工具调用，调用点无需重复解析。
      *
      * @param conversationId 会话ID
      * @param operationType  场景标识（格式：agent/multi 前缀 + 具体 handler/阶段，
@@ -117,22 +124,83 @@ public class CostMonitorService {
             return;
         }
         String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-v4-flash";
-        String promptContent = request != null && request.prompt() != null ? request.prompt().getContents() : null;
         saveCostRecord(conversationId, modelName, usage.getCacheReadInputTokens(),
                 usage.getPromptTokens(),
                 usage.getCompletionTokens(), operationType, conversationId,
-                promptContent, extractCompletion(chatResponse));
+                extractPrompt(request), extractCompletion(chatResponse));
     }
 
     /**
-     * 从 ChatResponse 提取 assistant 输出文本；无结果或空文本时返回 null
+     * 提取请求的完整输入文本：prompt 内容 + entity 结构化输出的格式提示 + 工具定义。
+     * entity() 的 JSON 格式提示存放在 context 的 OUTPUT_FORMAT 中，由最内层 ChatModelCallAdvisor
+     * 在进入模型前才注入 prompt；工具定义在 prompt options（ToolCallingChatOptions）中由模型层注入，
+     * 两者均需在此手动补上，保证留档内容与真实请求一致。
      */
-    private String extractCompletion(ChatResponse chatResponse) {
-        if (chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
+    private String extractPrompt(ChatClientRequest request) {
+        if (request == null || request.prompt() == null) {
             return null;
         }
-        String text = chatResponse.getResult().getOutput().getText();
-        return (text == null || text.isBlank()) ? null : text;
+        StringBuilder sb = new StringBuilder(request.prompt().getContents() != null
+                ? request.prompt().getContents() : "");
+        Object format = request.context().get(ChatClientAttributes.OUTPUT_FORMAT.getKey());
+        if (format instanceof String f && !f.isBlank()) {
+            sb.append("\n\n【entity 格式提示】\n").append(f);
+        }
+        List<ToolCallback> toolCallbacks = resolveToolCallbacks(request.prompt());
+        if (!toolCallbacks.isEmpty()) {
+            sb.append("\n\n【工具定义】\n");
+            for (ToolCallback tc : toolCallbacks) {
+                ToolDefinition def = tc.getToolDefinition();
+                sb.append("- ").append(def.name()).append(": ").append(def.description()).append('\n');
+                String schema = def.inputSchema();
+                if (schema != null && !schema.isBlank()) {
+                    sb.append("  schema: ").append(schema).append('\n');
+                }
+            }
+        }
+        String result = sb.toString().trim();
+        return result.isEmpty() ? null : result;
+    }
+
+    /**
+     * 从 prompt options 解析工具回调列表；options 非 ToolCallingChatOptions 时返回空列表
+     */
+    private List<ToolCallback> resolveToolCallbacks(Prompt prompt) {
+        if (prompt.getOptions() instanceof ToolCallingChatOptions options
+                && options.getToolCallbacks() != null) {
+            return options.getToolCallbacks();
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 ChatResponse 提取完整的 assistant 输出：拼接全部 generation 的文本与工具调用（JSON 参数），
+     * 无任何内容时返回 null。
+     */
+    private String extractCompletion(ChatResponse chatResponse) {
+        if (chatResponse.getResults() == null || chatResponse.getResults().isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Generation generation : chatResponse.getResults()) {
+            AssistantMessage output = generation.getOutput();
+            if (output == null) {
+                continue;
+            }
+            String text = output.getText();
+            if (text != null && !text.isBlank()) {
+                sb.append(text).append('\n');
+            }
+            List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
+            if (toolCalls != null) {
+                for (AssistantMessage.ToolCall tc : toolCalls) {
+                    sb.append("[工具调用] ").append(tc.name())
+                            .append('(').append(tc.arguments()).append(")\n");
+                }
+            }
+        }
+        String result = sb.toString().trim();
+        return result.isEmpty() ? null : result;
     }
 
     /**

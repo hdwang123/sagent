@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sagent Admin - 审计与Token监控</title>
     <link rel="stylesheet" href="lib/element-ui/index.css">
+    <link rel="stylesheet" href="lib/highlight.js/github.min.css">
     <style>
         :root {
             --page-bg: #f3f5f7;
@@ -166,6 +167,9 @@
         .detail-section-title {
             font-weight: 600;
             margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .detail-content {
@@ -178,6 +182,11 @@
             border-radius: 4px;
             font-size: 12px;
             line-height: 1.6;
+        }
+
+        .detail-content.code-block {
+            font-family: Consolas, Menlo, monospace;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -317,9 +326,11 @@
                         <el-table-column label="总计" width="110" align="right">
                             <template slot-scope="scope">{{ formatNumber(scope.row.totalTokens) }}</template>
                         </el-table-column>
-                        <el-table-column label="费用" width="100" align="right">
+                        <el-table-column label="费用" width="110" align="right">
                             <template slot-scope="scope">
-                                <el-button type="text" class="cost-amount" @click="viewFormula(scope.row)">¥{{ scope.row.costCny }}</el-button>
+                                <el-tooltip placement="top" :content="scope.row.formula" :disabled="!scope.row.formula">
+                                    <span class="cost-amount">¥{{ scope.row.costCny }}</span>
+                                </el-tooltip>
                             </template>
                         </el-table-column>
                         <el-table-column label="内容详情" width="100" align="center">
@@ -340,29 +351,33 @@
     <el-dialog title="LLM 输入输出详情" :visible.sync="costDetailVisible" width="72%" top="6vh">
         <el-row :gutter="16">
             <el-col :span="12">
-                <div class="detail-section-title">输入（Prompt）</div>
-                <pre class="detail-content">{{ costDetail.promptContent || '（无内容）' }}</pre>
+                <div class="detail-section-title">
+                    <span>输入（Prompt）</span>
+                    <el-button size="mini" type="text" icon="el-icon-document-copy"
+                               @click="copyContent(costPromptText, '输入内容')">复制</el-button>
+                </div>
+                <div v-if="costPromptHtml" class="detail-content code-block" v-html="costPromptHtml"></div>
+                <pre v-else class="detail-content">{{ costPromptText || '（无内容）' }}</pre>
             </el-col>
             <el-col :span="12">
-                <div class="detail-section-title">输出（Completion）</div>
-                <pre class="detail-content">{{ costDetail.completionContent || '（无内容）' }}</pre>
+                <div class="detail-section-title">
+                    <span>输出（Completion）</span>
+                    <el-button size="mini" type="text" icon="el-icon-document-copy"
+                               @click="copyContent(costCompletionText, '输出内容')">复制</el-button>
+                </div>
+                <div v-if="costCompletionHtml" class="detail-content code-block" v-html="costCompletionHtml"></div>
+                <pre v-else class="detail-content">{{ costCompletionText || '（无内容）' }}</pre>
             </el-col>
         </el-row>
         <div slot="footer">
             <el-button size="small" @click="costDetailVisible = false">关闭</el-button>
         </div>
     </el-dialog>
-    <!-- 计费公式弹窗 -->
-    <el-dialog title="计费公式" :visible.sync="formulaVisible" width="520px" top="22vh">
-        <pre class="detail-content" style="max-height:none;">{{ formulaText || '（无）' }}</pre>
-        <div slot="footer">
-            <el-button size="small" @click="formulaVisible = false">关闭</el-button>
-        </div>
-    </el-dialog>
 </div>
 
 <script src="lib/vue/vue.min.js"></script>
 <script src="lib/element-ui/index.js"></script>
+<script src="lib/highlight.js/highlight.min.js"></script>
 <script>
     new Vue({
         el: '#app',
@@ -381,12 +396,12 @@
                 costRows: [],
                 costSummary: { count: 0, totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, totalCost: '0.000000' },
                 costLoading: false,
-                // 内容详情弹窗
+                // 内容详情弹窗（输入输出经 JSON 格式化 + 语法高亮后展示）
                 costDetailVisible: false,
-                costDetail: { promptContent: '', completionContent: '' },
-                // 计费公式弹窗
-                formulaVisible: false,
-                formulaText: ''
+                costPromptText: '',
+                costPromptHtml: '',
+                costCompletionText: '',
+                costCompletionHtml: ''
             };
         },
         methods: {
@@ -452,12 +467,63 @@
                 this.loadCost();
             },
             viewCostDetail: function (row) {
-                this.costDetail = row;
+                this.costPromptText = this.formatContent(row.promptContent);
+                this.costCompletionText = this.formatContent(row.completionContent);
+                this.costPromptHtml = this.highlightJson(this.costPromptText);
+                this.costCompletionHtml = this.highlightJson(this.costCompletionText);
                 this.costDetailVisible = true;
             },
-            viewFormula: function (row) {
-                this.formulaText = row.formula;
-                this.formulaVisible = true;
+            // JSON 内容格式化：可解析的 JSON 缩进美化，非 JSON 原样返回
+            formatContent: function (content) {
+                if (!content) return '';
+                var text = content.trim();
+                if ((text.charAt(0) === '{' && text.charAt(text.length - 1) === '}') ||
+                    (text.charAt(0) === '[' && text.charAt(text.length - 1) === ']')) {
+                    try {
+                        return JSON.stringify(JSON.parse(text), null, 2);
+                    } catch (e) {
+                        // 非合法 JSON，按原文展示
+                    }
+                }
+                return text;
+            },
+            // 语法高亮：仅对 JSON 内容高亮，hljs 已转义原始文本，返回的 HTML 可直接 v-html 安全渲染
+            highlightJson: function (text) {
+                if (!text || !window.hljs) return '';
+                var t = text.trim();
+                var isJson = (t.charAt(0) === '{' && t.charAt(t.length - 1) === '}') ||
+                             (t.charAt(0) === '[' && t.charAt(t.length - 1) === ']');
+                if (!isJson) return '';
+                return hljs.highlight(t, { language: 'json' }).value;
+            },
+            // 复制内容：优先 Clipboard API，失败降级 textarea + execCommand
+            copyContent: function (text, label) {
+                if (!text) {
+                    this.$message({ message: '无内容可复制', type: 'warning' });
+                    return;
+                }
+                var that = this;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function () {
+                        that.$message({ message: (label || '内容') + '已复制', type: 'success' });
+                    }, function () {
+                        that.fallbackCopy(text, label);
+                    });
+                } else {
+                    this.fallbackCopy(text, label);
+                }
+            },
+            fallbackCopy: function (text, label) {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                var ok = false;
+                try { ok = document.execCommand('copy'); } catch (e) { }
+                document.body.removeChild(ta);
+                this.$message({ message: ok ? (label || '内容') + '已复制' : '复制失败', type: ok ? 'success' : 'error' });
             },
             // ---------- 工具 ----------
             toQuery: function (obj) {

@@ -3,6 +3,7 @@ package com.example.sagent.agent.cost;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.chat.client.ChatClientAttributes;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -11,6 +12,9 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -111,7 +115,7 @@ class CostMonitorServiceTest {
         when(usage.getPromptTokens()).thenReturn(10);
         when(usage.getCompletionTokens()).thenReturn(5);
         when(chatResponse.getMetadata()).thenReturn(metadata);
-        when(chatResponse.getResult()).thenReturn(generation);
+        when(chatResponse.getResults()).thenReturn(java.util.List.of(generation));
         when(generation.getOutput()).thenReturn(assistantMessage);
         when(assistantMessage.getText()).thenReturn("模型回答");
 
@@ -126,6 +130,124 @@ class CostMonitorServiceTest {
         assertThat(record.getCompletionContent()).isEqualTo("模型回答");
         assertThat(record.getInputTokens()).isEqualTo(10L);
         assertThat(record.getOutputTokens()).isEqualTo(5L);
+    }
+
+    @Test
+    void extractCompletion_mergesAllGenerationsAndToolCalls() {
+        // 多 generation：第一个含文本，第二个纯工具调用，输出应包含两者的完整内容
+        ChatClientRequest request = mock(ChatClientRequest.class);
+        when(request.prompt()).thenReturn(new Prompt("查询天气"));
+
+        AssistantMessage textMessage = mock(AssistantMessage.class);
+        when(textMessage.getText()).thenReturn("好的，我来查询。");
+        when(textMessage.getToolCalls()).thenReturn(null);
+        Generation gen1 = mock(Generation.class);
+        when(gen1.getOutput()).thenReturn(textMessage);
+
+        AssistantMessage toolMessage = mock(AssistantMessage.class);
+        when(toolMessage.getText()).thenReturn(null);
+        when(toolMessage.getToolCalls()).thenReturn(java.util.List.of(
+                new AssistantMessage.ToolCall("1", "function", "get_weather", "{\"city\":\"上海\"}")));
+        Generation gen2 = mock(Generation.class);
+        when(gen2.getOutput()).thenReturn(toolMessage);
+
+        ChatResponse chatResponse = mock(ChatResponse.class);
+        ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
+        Usage usage = mock(Usage.class);
+        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
+        when(metadata.getUsage()).thenReturn(usage);
+        when(usage.getPromptTokens()).thenReturn(10);
+        when(usage.getCompletionTokens()).thenReturn(5);
+        when(chatResponse.getMetadata()).thenReturn(metadata);
+        when(chatResponse.getResults()).thenReturn(java.util.List.of(gen1, gen2));
+
+        ChatClientResponse response = mock(ChatClientResponse.class);
+        when(response.chatResponse()).thenReturn(chatResponse);
+
+        service.saveCostRecord("conv-1", "agent/skill", request, response);
+
+        CostRecord record = capturedRecord();
+        assertThat(record.getCompletionContent())
+                .contains("好的，我来查询。")
+                .contains("[工具调用] get_weather({\"city\":\"上海\"})");
+    }
+
+    @Test
+    void saveCostRecord_appendsEntityFormatHintToPrompt() {
+        // entity() 的 JSON 格式提示在 context 的 OUTPUT_FORMAT 中，应追加到记录的输入内容
+        ChatClientRequest request = mock(ChatClientRequest.class);
+        when(request.prompt()).thenReturn(new Prompt("查询产品"));
+        when(request.context()).thenReturn(Map.of(
+                ChatClientAttributes.OUTPUT_FORMAT.getKey(),
+                "你的输出必须为合法JSON，字段为 {type, reason}"));
+
+        ChatResponse chatResponse = mock(ChatResponse.class);
+        ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
+        Usage usage = mock(Usage.class);
+        Generation generation = mock(Generation.class);
+        AssistantMessage assistantMessage = mock(AssistantMessage.class);
+        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
+        when(metadata.getUsage()).thenReturn(usage);
+        when(usage.getPromptTokens()).thenReturn(10);
+        when(usage.getCompletionTokens()).thenReturn(5);
+        when(chatResponse.getMetadata()).thenReturn(metadata);
+        when(chatResponse.getResults()).thenReturn(java.util.List.of(generation));
+        when(generation.getOutput()).thenReturn(assistantMessage);
+        when(assistantMessage.getText()).thenReturn("{\"type\":\"CHAT\"}");
+
+        ChatClientResponse response = mock(ChatClientResponse.class);
+        when(response.chatResponse()).thenReturn(chatResponse);
+
+        service.saveCostRecord("conv-1", "routing/classifier", request, response);
+
+        CostRecord record = capturedRecord();
+        assertThat(record.getPromptContent())
+                .contains("查询产品")
+                .contains("【entity 格式提示】")
+                .contains("你的输出必须为合法JSON");
+    }
+
+    @Test
+    void saveCostRecord_appendsToolDefinitionsToPrompt() {
+        // 工具定义在 prompt options（ToolCallingChatOptions）中，应追加到记录的输入内容
+        ToolCallingChatOptions options = mock(ToolCallingChatOptions.class);
+        ToolCallback tool = mock(ToolCallback.class);
+        ToolDefinition def = mock(ToolDefinition.class);
+        when(def.name()).thenReturn("get_product");
+        when(def.description()).thenReturn("查询产品信息");
+        when(def.inputSchema()).thenReturn("{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}}}");
+        when(tool.getToolDefinition()).thenReturn(def);
+        when(options.getToolCallbacks()).thenReturn(java.util.List.of(tool));
+
+        ChatClientRequest request = mock(ChatClientRequest.class);
+        when(request.prompt()).thenReturn(new Prompt("查询产品", options));
+        when(request.context()).thenReturn(Map.of());
+
+        ChatResponse chatResponse = mock(ChatResponse.class);
+        ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
+        Usage usage = mock(Usage.class);
+        Generation generation = mock(Generation.class);
+        AssistantMessage assistantMessage = mock(AssistantMessage.class);
+        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
+        when(metadata.getUsage()).thenReturn(usage);
+        when(usage.getPromptTokens()).thenReturn(10);
+        when(usage.getCompletionTokens()).thenReturn(5);
+        when(chatResponse.getMetadata()).thenReturn(metadata);
+        when(chatResponse.getResults()).thenReturn(java.util.List.of(generation));
+        when(generation.getOutput()).thenReturn(assistantMessage);
+        when(assistantMessage.getText()).thenReturn("{\"code\":200}");
+
+        ChatClientResponse response = mock(ChatClientResponse.class);
+        when(response.chatResponse()).thenReturn(chatResponse);
+
+        service.saveCostRecord("conv-1", "agent/gskill", request, response);
+
+        CostRecord record = capturedRecord();
+        assertThat(record.getPromptContent())
+                .contains("查询产品")
+                .contains("【工具定义】")
+                .contains("- get_product: 查询产品信息")
+                .contains("schema: {\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}}}");
     }
 
     private CostRecord capturedRecord() {
