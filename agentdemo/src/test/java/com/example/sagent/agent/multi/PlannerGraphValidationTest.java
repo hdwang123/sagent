@@ -11,6 +11,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -168,6 +169,50 @@ class PlannerGraphValidationTest {
         TaskPlan validated = planner.validateAndFixPlan(plan);
         // 降级为单聊天任务时保留第一个任务的 goal
         assertThat(validated.tasks().get(0).goal()).isEqualTo("goal-t1");
+    }
+
+    // === remapConflictingIds ===
+
+    @Test
+    void remap_conflictingWithFailedId_renamedAndDepsUpdated() {
+        // 重规划新任务 t2 与已失败任务 t2 冲突，另一任务 r3 依赖它 → t2 重命名为 r1 并同步依赖引用
+        TaskPlan plan = new TaskPlan(List.of(
+                task("t2", List.of()),
+                task("r3", List.of("t2"))));
+        TaskPlan remapped = planner.remapConflictingIds(plan, Set.of("t2"));
+
+        assertThat(remapped.tasks()).hasSize(2);
+        assertThat(remapped.tasks().get(0).id()).isEqualTo("r1");
+        assertThat(remapped.tasks().get(0).goal()).isEqualTo("goal-t2");  // goal 保留
+        assertThat(remapped.tasks().get(1).id()).isEqualTo("r3");
+        assertThat(remapped.tasks().get(1).dependsOn()).containsExactly("r1");  // 依赖引用同步更新
+    }
+
+    @Test
+    void remap_noConflict_returnsSamePlan() {
+        // 新任务均不与失败任务 id 冲突 → 计划原样返回
+        TaskPlan plan = new TaskPlan(List.of(
+                task("r1", List.of()),
+                task("r2", List.of("r1"))));
+        TaskPlan remapped = planner.remapConflictingIds(plan, Set.of("t1"));
+
+        assertThat(remapped.tasks()).isEqualTo(plan.tasks());
+    }
+
+    @Test
+    void remap_multipleConflicts_assignsUnusedRN() {
+        // 两个任务都与失败 id 冲突，且 r1 已被计划内任务占用 → t2→r2, t3→r3
+        TaskPlan plan = new TaskPlan(List.of(
+                task("t2", List.of()),
+                task("t3", List.of("t2")),
+                task("r1", List.of())));
+        TaskPlan remapped = planner.remapConflictingIds(plan, Set.of("t2", "t3"));
+
+        assertThat(remapped.tasks()).hasSize(3);
+        assertThat(remapped.tasks().get(0).id()).isEqualTo("r2");
+        assertThat(remapped.tasks().get(1).id()).isEqualTo("r3");
+        assertThat(remapped.tasks().get(1).dependsOn()).containsExactly("r2");
+        assertThat(remapped.tasks().get(2).id()).isEqualTo("r1");
     }
 
     private Task task(String id, List<String> dependsOn) {

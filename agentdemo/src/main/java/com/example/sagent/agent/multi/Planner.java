@@ -199,8 +199,59 @@ public class Planner {
 
         // P1-6: 重新规划结果同样需要图校验
         TaskPlan validated = validateAndFixPlan(newPlan);
-        logPlan("重新规划", validated.tasks());
-        return validated;
+        // 重规划新任务不得复用已失败任务的id：冲突则重命名并同步dependsOn引用，避免覆盖已执行结果造成调度歧义；
+        // 复用已完成任务id的场景由 TaskExecutor 的 filterPending 过滤（视为LLM重复输出已完成任务）
+        TaskPlan remapped = remapConflictingIds(validated, failedIds);
+        logPlan("重新规划", remapped.tasks());
+        return remapped;
+    }
+
+    /**
+     * 重命名与已失败任务 id 冲突的重规划任务，避免结果覆盖与调度歧义。
+     * <p>
+     * REPLAN_PROMPT 仅提示"新任务 id 用 r1、r2..."，LLM 输出不稳定时可能复用已执行任务的 id。
+     * 与失败任务 id 冲突的任务改为未占用的 rN，并同步更新其他任务 dependsOn 中对旧 id 的引用；
+     * 与已完成任务 id 冲突的任务不做处理（TaskExecutor 的 filterPending 会将其过滤，视为 LLM 重复输出已完成任务）。
+     *
+     * @param plan      重规划校验后的计划
+     * @param failedIds 已失败子任务 id 集合
+     * @return id 冲突重映射后的计划
+     */
+    TaskPlan remapConflictingIds(TaskPlan plan, Set<String> failedIds) {
+        // 所有已被占用的 id：失败任务 id + 当前计划内 id
+        Set<String> used = new HashSet<>(failedIds);
+        for (Task t : plan.tasks()) {
+            used.add(t.id());
+        }
+        Map<String, String> idMap = new HashMap<>();
+        List<Task> tasks = new ArrayList<>();
+        for (Task t : plan.tasks()) {
+            if (failedIds.contains(t.id())) {
+                int n = 1;
+                while (used.contains("r" + n)) {
+                    n++;
+                }
+                String newId = "r" + n;
+                used.add(newId);
+                idMap.put(t.id(), newId);
+                LOGGER.warn("重规划任务id[{}]与已失败任务冲突，重命名为[{}]", t.id(), newId);
+                tasks.add(new Task(newId, t.type(), t.goal(), t.dependsOn()));
+            } else {
+                tasks.add(t);
+            }
+        }
+        if (idMap.isEmpty()) {
+            return plan;
+        }
+        // 同步更新 dependsOn 中对旧 id 的引用
+        List<Task> remapped = tasks.stream()
+                .map(t -> {
+                    List<String> deps = t.dependsOn() == null ? List.of()
+                            : t.dependsOn().stream().map(d -> idMap.getOrDefault(d, d)).toList();
+                    return new Task(t.id(), t.type(), t.goal(), deps);
+                })
+                .toList();
+        return new TaskPlan(remapped);
     }
 
     /**

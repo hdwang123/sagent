@@ -151,7 +151,9 @@ public class TaskExecutor {
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
                                 failedIds.size(), replanCount, maxReplan);
                         int prevPendingCount = pending.size();
-                        plan = planner.replan(message, results, failedIds, pending, plan);
+                        // 过滤重规划结果中已成功完成的任务（LLM可能重复输出已完成id），防止重复执行
+                        plan = planner.replan(message, results, failedIds, pending, plan)
+                                .filterPending(completedIds);
                         pending.clear();
                         pending.addAll(plan.tasks());
                         LOGGER.info("重新规划完成: 原pending={}个, 新计划={}个, 净变化={}个",

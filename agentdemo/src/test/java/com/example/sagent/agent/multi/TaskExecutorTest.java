@@ -212,6 +212,38 @@ class TaskExecutorTest {
         assertThat(goal).isEqualTo("生成文档");
     }
 
+    // === replan 与已完成任务过滤 ===
+
+    @Test
+    void execute_replanContainingCompletedTask_filtersItOut() {
+        // t1 成功、t2 失败(500)、t3 依赖 t1+t2 待调度 → 波次1后触发 replan
+        Task t1 = new Task("t1", AgentType.CHAT, "任务1", List.of());
+        Task t2 = new Task("t2", AgentType.CHAT, "任务2", List.of());
+        Task t3 = new Task("t3", AgentType.CHAT, "任务3", List.of("t1", "t2"));
+
+        AgentHandler chatHandler = mock(AgentHandler.class);
+        when(handlerRegistry.get(AgentType.CHAT)).thenReturn(chatHandler);
+        when(chatHandler.handle(anyString(), eq("任务1"))).thenReturn(new HandlerResult("结果1"));
+        when(chatHandler.handle(anyString(), eq("任务2")))
+                .thenReturn(new HandlerResult("技术错误", List.of(), 500));
+        Task r1 = new Task("r1", AgentType.CHAT, "重做任务2", List.of());
+        Task r3 = new Task("r3", AgentType.CHAT, "任务3", List.of("r1"));
+        when(chatHandler.handle(anyString(), contains("重做任务2"))).thenReturn(new HandlerResult("重做成功"));
+        when(chatHandler.handle(anyString(), contains("任务3"))).thenReturn(new HandlerResult("任务3完成"));
+        // replan 返回的新计划错误地带上已成功完成的 t1，应被 filterPending 过滤
+        when(planner.replan(anyString(), anyMap(), anySet(), anyList(), any()))
+                .thenReturn(new TaskPlan(List.of(t1, r1, r3)));
+
+        Map<String, HandlerResult> results =
+                executor.execute("conv-1", new TaskPlan(List.of(t1, t2, t3)), "测试消息");
+
+        assertThat(results.get("t1").success()).isTrue();
+        assertThat(results.get("r1").answer()).isEqualTo("重做成功");
+        assertThat(results.get("r3").answer()).isEqualTo("任务3完成");
+        // 已完成任务 t1 未被重复执行（handle 仅被调用 1 次）
+        verify(chatHandler, times(1)).handle(anyString(), eq("任务1"));
+    }
+
     // === 辅助方法 ===
 
     /**
