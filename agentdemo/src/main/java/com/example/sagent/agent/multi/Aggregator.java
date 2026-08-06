@@ -54,7 +54,7 @@ public class Aggregator {
     public String aggregate(String conversationId, String message, Map<String, HandlerResult> results, TaskPlan plan) {
         String subResults = results.entrySet().stream()
                 .map(e -> {
-                    Task t = plan.taskById().get(e.getKey());
+                    Task t = plan.taskById(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "任务: " + label + "\n结果: " + e.getValue().answer();
                 })
@@ -88,7 +88,7 @@ public class Aggregator {
     private String fallbackAnswer(Map<String, HandlerResult> results, TaskPlan plan) {
         return results.entrySet().stream()
                 .map(e -> {
-                    Task t = plan.taskById().get(e.getKey());
+                    Task t = plan.taskById(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "## " + label + "\n" + e.getValue().answer();
                 })

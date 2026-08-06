@@ -131,25 +131,36 @@ public class Planner {
 
     /**
      * 方案B：失败触发重新规划。基于已完成结果、失败原因和剩余任务，让Planner重新规划剩余任务。
+     * <p>
+     * 统一返回 {@link TaskPlan}（不再返回裸 List）：仅包含"接下来待调度"的任务，
+     * 内部复用 {@link #validateAndFixPlan} 完成 DAG 校验（去重/过滤悬空依赖/环检测）。
+     * 依赖就绪判断由 TaskExecutor 基于 completedIds 完成，此处不做旧索引合并。
+     *
+     * @param message      原始用户消息
+     * @param results      已执行子任务结果（含失败任务的错误结果）
+     * @param failedIds    失败子任务 id 集合
+     * @param pendingTasks 原计划中尚未调度的任务
+     * @param originalPlan 原任务计划（提供 id→Task 索引，用于取 goal 标签）
+     * @return 仅含待调度任务的校验后任务计划；重新规划返回空时为空计划
      */
-    public List<Task> replan(String message, Map<String, HandlerResult> results,
-                              Set<String> failedIds, List<Task> pending, TaskPlan plan) {
+    public TaskPlan replan(String message, Map<String, HandlerResult> results,
+                           Set<String> failedIds, List<Task> pendingTasks, TaskPlan originalPlan) {
         String doneTasks = results.entrySet().stream()
                 .filter(e -> !failedIds.contains(e.getKey()))
                 .map(e -> {
-                    Task t = plan.taskById().get(e.getKey());
+                    Task t = originalPlan.taskById(e.getKey());
                     String label = t == null ? e.getKey() : t.goal();
                     return "id=" + e.getKey() + ", goal=" + label + ", 结果=" + e.getValue().answer();
                 })
                 .collect(Collectors.joining("\n"));
         String failedTasks = failedIds.stream()
                 .map(id -> {
-                    Task t = plan.taskById().get(id);
+                    Task t = originalPlan.taskById(id);
                     String label = t == null ? id : t.goal();
                     return "id=" + id + ", goal=" + label + ", 失败原因=" + results.get(id).answer();
                 })
                 .collect(Collectors.joining("\n"));
-        String pendingTasks = pending.stream()
+        String pendingDesc = pendingTasks.stream()
                 .map(t -> "id=" + t.id() + ", type=" + t.type() + ", goal=" + t.goal()
                         + ", dependsOn=" + t.dependsOn())
                 .collect(Collectors.joining("\n"));
@@ -172,7 +183,7 @@ public class Planner {
                         .param("message", message)
                         .param("doneTasks", doneTasks.isBlank() ? "无" : doneTasks)
                         .param("failedTasks", failedTasks)
-                        .param("pendingTasks", pendingTasks.isBlank() ? "无" : pendingTasks))
+                        .param("pendingTasks", pendingDesc.isBlank() ? "无" : pendingDesc))
                 .advisors(new SimpleLoggerAdvisor())
                 .advisors(advisor -> advisor
                         .param(ChatMemory.CONVERSATION_ID, "replan")
@@ -183,13 +194,13 @@ public class Planner {
         TaskPlan newPlan = callResponse.entity(TaskPlan.class, spec -> spec.validateSchema());
         if (newPlan == null || newPlan.tasks() == null || newPlan.tasks().isEmpty()) {
             LOGGER.warn("重新规划返回空，剩余任务不再执行");
-            return List.of();
+            return new TaskPlan(List.of());
         }
 
         // P1-6: 重新规划结果同样需要图校验
         TaskPlan validated = validateAndFixPlan(newPlan);
         logPlan("重新规划", validated.tasks());
-        return validated.tasks();
+        return validated;
     }
 
     /**

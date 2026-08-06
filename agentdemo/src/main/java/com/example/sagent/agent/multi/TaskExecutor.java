@@ -86,12 +86,14 @@ public class TaskExecutor {
      * 出现循环依赖或依赖id不存在时，剩余任务标记失败跳过，不盲目执行。
      *
      * @param conversationId 会话ID
-     * @param plan           任务计划（含 tasks 与可变 id→Task 索引，重新规划时直接更新 plan.taskById()）
+     * @param plan           任务计划（含 tasks 与 id→Task 索引；失败触发重新规划时，plan 引用
+     *                       会被整体替换为 Planner 返回的新计划——仅含待调度任务）
      * @param message        原始用户消息（供重新规划使用）
      * @return 子任务id -> 执行结果
      */
     public Map<String, HandlerResult> execute(String conversationId, TaskPlan plan, String message) {
         Map<String, HandlerResult> results = new LinkedHashMap<>();
+        Set<String> completedIds = new HashSet<>();   // 仅成功完成的任务 id，驱动依赖就绪判断
         List<Task> pending = new ArrayList<>(plan.tasks());
         int replanCount = 0;
         int wave = 0;
@@ -100,18 +102,17 @@ public class TaskExecutor {
         while (!pending.isEmpty()) {
             wave++;
             LOGGER.info("===== 波次{}开始: pending={}个 =====", wave, pending.size());
-            // 找出本轮可执行的任务（无依赖 或 所有依赖已完成）
-            List<Task> ready = pending.stream()
-                    .filter(t -> t.dependsOn() == null || t.dependsOn().isEmpty()
-                            || t.dependsOn().stream().allMatch(results::containsKey))
-                    .toList();
+            // plan 引用可能在重新规划后被替换，捕获当前引用供本轮 lambda 捕获
+            TaskPlan currentPlan = plan;
+            // 找出本轮可执行的任务（无依赖 或 所有依赖已成功完成）
+            List<Task> ready = findReadyTasks(pending, completedIds);
             if (ready.isEmpty()) {
-                // 死锁防护：存在循环依赖或依赖指向不存在的任务id，剩余任务永远无法满足依赖。
-                LOGGER.warn("依赖无法满足（循环依赖或依赖id不存在），剩余任务标记失败跳过: {}",
+                // 死锁防护：存在循环依赖或依赖指向失败/不存在的任务id，剩余任务永远无法满足依赖。
+                LOGGER.warn("依赖无法满足（循环依赖或依赖任务失败/id不存在），剩余任务标记失败跳过: {}",
                         pending.stream().map(t -> t.id() + ":" + t.goal()).toList());
-                markFailed(results, plan,
+                markFailed(results, currentPlan,
                         pending.stream().map(Task::id).collect(Collectors.toSet()),
-                        "因依赖无法满足而跳过（循环依赖或依赖id不存在）");
+                        "因依赖无法满足而跳过（循环依赖或依赖任务失败/id不存在）");
                 break;
             }
             LOGGER.info("波次{}就绪任务: {}", wave, ready.stream().map(Task::id).toList());
@@ -119,12 +120,18 @@ public class TaskExecutor {
 
             // 本轮并行执行：每个子任务加超时与异常兜底
             List<CompletableFuture<Map.Entry<String, HandlerResult>>> futures = ready.stream()
-                    .map(task -> scheduleTask(conversationId, task, results, plan))
+                    .map(task -> scheduleTask(conversationId, task, results, currentPlan))
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             futures.forEach(f -> {
                 var entry = f.join();
                 results.put(entry.getKey(), entry.getValue());
+            });
+            // 仅成功任务进入 completedIds，供后续波次依赖就绪判断
+            ready.forEach(t -> {
+                if (!results.get(t.id()).error()) {
+                    completedIds.add(t.id());
+                }
             });
             long successCount = ready.stream().filter(t -> !results.get(t.id()).error()).count();
             long failCount = ready.size() - successCount;
@@ -138,19 +145,15 @@ public class TaskExecutor {
                         .collect(Collectors.toSet());
                 if (!failedIds.isEmpty()) {
                     if (replanCount < maxReplan) {
-                        // 方案B：失败触发重新规划
+                        // 方案B：失败触发重新规划。Planner 统一返回仅含待调度任务的 TaskPlan（已复用 DAG 校验），
+                        // 动态替换 plan 引用，后续依赖就绪判断自动基于新结构
                         replanCount++;
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
                                 failedIds.size(), replanCount, maxReplan);
-                        List<Task> newTasks = planner.replan(message, results, failedIds, pending, plan);
-                        // P0-2: 清理失败任务的旧 id，避免 LLM 复用 id 时索引污染
-                        failedIds.forEach(plan.taskById()::remove);
+                        plan = planner.replan(message, results, failedIds, pending, plan);
                         pending.clear();
-                        pending.addAll(newTasks);
-                        for (Task t : newTasks) {
-                            plan.taskById().put(t.id(), t);
-                        }
-                        LOGGER.info("重新规划完成: 新增{}个任务, 剩余pending={}个", newTasks.size(), pending.size());
+                        pending.addAll(plan.tasks());
+                        LOGGER.info("重新规划完成: 新增{}个任务, 剩余pending={}个", plan.tasks().size(), pending.size());
                         continue;
                     }
                     // 方案E：重新规划次数用完，依赖失败任务的后续任务注定无意义，止损跳过
@@ -182,6 +185,21 @@ public class TaskExecutor {
     }
 
     /**
+     * 找出当前波次可执行的任务：无依赖 或 所有依赖已在 completedIds（成功完成）中。
+     * 依赖失败任务的任务不会就绪，会走死锁防护或止损，避免基于失败结果盲目执行。
+     *
+     * @param pending      待调度任务
+     * @param completedIds 已成功完成的任务 id 集合
+     * @return 本轮可并行执行的任务列表
+     */
+    private List<Task> findReadyTasks(List<Task> pending, Set<String> completedIds) {
+        return pending.stream()
+                .filter(t -> t.dependsOn() == null || t.dependsOn().isEmpty()
+                        || t.dependsOn().stream().allMatch(completedIds::contains))
+                .toList();
+    }
+
+    /**
      * 止损公共逻辑：把指定id集合的子任务标记为失败（写入error结果）。
      *
      * @param results 结果集（会被直接写入，key=子任务id）
@@ -192,7 +210,7 @@ public class TaskExecutor {
     private void markFailed(Map<String, HandlerResult> results,
                             TaskPlan plan, Set<String> ids, String reason) {
         for (String id : ids) {
-            Task t = plan.taskById().get(id);
+            Task t = plan.taskById(id);
             String label = t == null ? id : t.goal();
             results.put(id, new HandlerResult("子任务[" + label + "]" + reason, List.of(), HandlerResult.CODE_ERROR));
         }
@@ -313,7 +331,7 @@ public class TaskExecutor {
         List<String> depBlocks = depIds.stream()
                 .filter(results::containsKey)
                 .map(depId -> {
-                    Task depTask = plan.taskById().get(depId);
+                    Task depTask = plan.taskById(depId);
                     String depGoal = depTask == null ? depId : depTask.goal();
                     return "【依赖任务：" + depGoal + "】\n" + results.get(depId).answer();
                 })
