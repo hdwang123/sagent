@@ -5,6 +5,7 @@ import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentType;
 import com.example.sagent.agent.model.RouteDecision;
 import com.example.sagent.agent.cost.CostMonitorService;
+import com.example.sagent.agent.cost.TokenUsageCostAdvisor;
 import com.example.sagent.agent.skills.ASkill;
 import com.example.sagent.agent.skills.GSkill;
 import com.example.sagent.agent.skills.Skill;
@@ -12,9 +13,7 @@ import com.example.sagent.agent.skills.ToolDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -144,25 +143,13 @@ public class MessageClassifier {
             var callResponse = chatClient.prompt()
                     .system(buildClassificationPrompt())
                     .user(classificationInput)
+                    .advisors(advisor -> advisor
+                            .param(ChatMemory.CONVERSATION_ID, conversationId)
+                            .param("operationType", "routing/classifier"))
+                    .advisors(new TokenUsageCostAdvisor(costMonitorService))
                     .call();
 
             RouteDecision decision = callResponse.entity(RouteDecision.class, spec -> spec.validateSchema());
-
-            // 记录成本
-            var chatResponse = callResponse.chatResponse();
-            ChatResponseMetadata metadata = chatResponse != null ? chatResponse.getMetadata() : null;
-            Usage usage = metadata != null ? metadata.getUsage() : null;
-            if (usage != null && usage.getPromptTokens() != null) {
-                costMonitorService.saveCostRecord(
-                        conversationId,
-                        "deepseek-v4-flash",
-                        usage.getCacheReadInputTokens(),
-                        usage.getPromptTokens(),
-                        usage.getCompletionTokens(),
-                        "routing/classifier",
-                        conversationId
-                );
-            }
 
             if (decision == null || decision.type() == null) {
                 long ms = (System.nanoTime() - start) / 1_000_000;

@@ -5,6 +5,7 @@ import com.example.sagent.agent.audit.OperationType;
 import com.example.sagent.agent.audit.ResourceType;
 import com.example.sagent.agent.core.AgentHandler;
 import com.example.sagent.agent.cost.CostMonitorService;
+import com.example.sagent.agent.cost.TokenUsageCostAdvisor;
 import com.example.sagent.agent.memory.ConversationHistory;
 import com.example.sagent.agent.model.AgentResult;
 import com.example.sagent.agent.model.AgentType;
@@ -140,13 +141,12 @@ public class RagHandler implements AgentHandler {
                                     """)
                             .param("question", message)
                             .param("context", context))
-                    .advisors(advisor -> advisor.param(
-                            ChatMemory.CONVERSATION_ID,
-                            conversationId
-                    ))
+                    .advisors(advisor -> advisor
+                            .param(ChatMemory.CONVERSATION_ID, conversationId)
+                            .param("operationType", "agent/rag"))
+                    .advisors(new TokenUsageCostAdvisor(costMonitorService))
                     .call();
             String answer = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "agent/rag", callResponse.chatResponse());
 
             List<String> sources = hits.stream()
                     .map(VectorKnowledgeRetriever.KnowledgeHit::source)
@@ -188,9 +188,12 @@ public class RagHandler implements AgentHandler {
                     .user(user -> user.text(RERANK_PROMPT)
                             .param("question", question)
                             .param("documents", docList.toString()))
+                    .advisors(advisor -> advisor
+                            .param(ChatMemory.CONVERSATION_ID, conversationId)
+                            .param("operationType", "agent/rag-rerank"))
+                    .advisors(new TokenUsageCostAdvisor(costMonitorService))
                     .call();
             String response = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "agent/rag-rerank", callResponse.chatResponse());
 
             // 解析LLM返回的分数
             List<Integer> scores = parseScores(response, candidates.size());

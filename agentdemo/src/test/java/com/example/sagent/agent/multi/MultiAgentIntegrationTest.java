@@ -68,6 +68,7 @@ class MultiAgentIntegrationTest {
         // Aggregator 使用 user(Consumer<UserSpec>) 重载
         when(mockSpec.user(any(Consumer.class))).thenReturn(mockSpec);
         when(mockSpec.advisors(any(Advisor.class))).thenReturn(mockSpec);
+        when(mockSpec.advisors(any(Consumer.class))).thenReturn(mockSpec);
         when(mockSpec.call()).thenReturn(mockCallSpec);
 
         // 真实多Agent独立会话记忆

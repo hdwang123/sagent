@@ -1,12 +1,14 @@
 package com.example.sagent.agent.multi;
 
 import com.example.sagent.agent.cost.CostMonitorService;
+import com.example.sagent.agent.cost.TokenUsageCostAdvisor;
 import com.example.sagent.agent.model.HandlerResult;
 import com.example.sagent.agent.model.Task;
 import com.example.sagent.agent.model.TaskPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -63,9 +65,12 @@ public class Aggregator {
                     .user(user -> user.text("用户原始请求：{message}\n\n子任务结果：\n{subResults}")
                             .param("message", message)
                             .param("subResults", subResults))
+                    .advisors(advisor -> advisor
+                            .param(ChatMemory.CONVERSATION_ID, conversationId)
+                            .param("operationType", "multi/aggregator"))
+                    .advisors(new TokenUsageCostAdvisor(costMonitorService))
                     .call();
             String answer = callResponse.content();
-            costMonitorService.saveCostRecord(conversationId, "multi/aggregator", callResponse.chatResponse());
             if (answer == null || answer.isBlank()) {
                 LOGGER.warn("汇总Agent返回空，降级为拼接子任务结果");
                 return fallbackAnswer(results, plan);

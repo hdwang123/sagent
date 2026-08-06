@@ -12,6 +12,7 @@ import com.example.sagent.agent.skills.ToolDescriptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -52,6 +53,8 @@ class MessageClassifierTest {
         when(mockClient.prompt()).thenReturn(mockSpec);
         when(mockSpec.system(anyString())).thenReturn(mockSpec);
         when(mockSpec.user(anyString())).thenReturn(mockSpec);
+        when(mockSpec.advisors(any(Advisor.class))).thenReturn(mockSpec);
+        when(mockSpec.advisors(any(Consumer.class))).thenReturn(mockSpec);
         when(mockSpec.call()).thenReturn(mockCallSpec);
         when(mockHistory.format(anyString())).thenReturn("");
 

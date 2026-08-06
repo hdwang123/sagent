@@ -5,9 +5,6 @@ import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
-import org.springframework.ai.chat.model.ChatResponse;
 
 import java.util.Map;
 
@@ -20,7 +17,8 @@ import static org.mockito.Mockito.when;
  * TokenUsageCostAdvisor 单元测试
  * <p>
  * 验证工具循环内层 advisor 的统计链路：
- * 从 advisor param 读取 conversationId/operationType，并从 ChatResponse 提取 usage 调用 CostMonitorService。
+ * 从 advisor param 读取 conversationId/operationType，并将请求+响应一并传给 CostMonitorService
+ * （用于记录 LLM 输入输出内容）。
  */
 class TokenUsageCostAdvisorTest {
 
@@ -29,17 +27,7 @@ class TokenUsageCostAdvisorTest {
         CostMonitorService costMonitorService = mock(CostMonitorService.class);
         TokenUsageCostAdvisor advisor = new TokenUsageCostAdvisor(costMonitorService);
 
-        ChatResponse chatResponse = mock(ChatResponse.class);
-        ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
-        Usage usage = mock(Usage.class);
-        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
-        when(metadata.getUsage()).thenReturn(usage);
-        when(usage.getPromptTokens()).thenReturn(10);
-        when(usage.getCompletionTokens()).thenReturn(5);
-        when(chatResponse.getMetadata()).thenReturn(metadata);
-
         ChatClientResponse response = mock(ChatClientResponse.class);
-        when(response.chatResponse()).thenReturn(chatResponse);
 
         ChatClientRequest request = mock(ChatClientRequest.class);
         when(request.context()).thenReturn(Map.of(
@@ -51,9 +39,9 @@ class TokenUsageCostAdvisorTest {
 
         ChatClientResponse result = advisor.adviseCall(request, chain);
 
-        // 透传 response，并携带参数记账
+        // 透传 response，并携带请求+响应记账（含输入输出内容）
         verify(chain).nextCall(request);
-        verify(costMonitorService).saveCostRecord(eq("conv-1"), eq("agent/skill"), eq(chatResponse));
+        verify(costMonitorService).saveCostRecord(eq("conv-1"), eq("agent/skill"), eq(request), eq(response));
     }
 
     @Test
@@ -74,6 +62,7 @@ class TokenUsageCostAdvisorTest {
         verify(costMonitorService, org.mockito.Mockito.never()).saveCostRecord(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(ChatResponse.class));
+                org.mockito.ArgumentMatchers.any(ChatClientRequest.class),
+                org.mockito.ArgumentMatchers.any(ChatClientResponse.class));
     }
 }

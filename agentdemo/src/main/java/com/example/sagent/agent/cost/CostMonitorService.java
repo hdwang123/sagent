@@ -2,6 +2,8 @@ package com.example.sagent.agent.cost;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClientRequest;
+import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -43,11 +45,14 @@ public class CostMonitorService {
      * @param outputTokens         输出 token 数
      * @param operationType        场景标识（agent/skill、multi/planner 等）
      * @param conversationId       会话ID
+     * @param promptContent        LLM 输入内容（prompt 全文，可为 null）
+     * @param completionContent    LLM 输出内容（completion 全文，可为 null）
      */
     @Async
     public void saveCostRecord(String userId, String modelName, Long cacheReadInputTokens,
                                 long inputTokens, long outputTokens,
-                                String operationType, String conversationId) {
+                                String operationType, String conversationId,
+                                String promptContent, String completionContent) {
         try {
             ModelPricing.Pricing p = modelPricing.get(modelName);
 
@@ -74,6 +79,8 @@ public class CostMonitorService {
                     totalCostCny,
                     operationType,
                     conversationId,
+                    promptContent,
+                    completionContent,
                     LocalDateTime.now());
 
             costRecordRepository.save(record);
@@ -87,28 +94,45 @@ public class CostMonitorService {
     }
 
     /**
-     * 便捷方法：从 ChatResponse 提取 usage 异步保存成本记录（null-safe）
-     * 调用点只需传会话ID、操作类型与响应对象，避免各 Handler 重复解析 usage
+     * 便捷方法：从 ChatClient 请求/响应提取输入输出内容与 usage 异步保存成本记录（null-safe）。
+     * 由 {@link TokenUsageCostAdvisor} 调用，prompt 取 {@link ChatClientRequest#prompt()} 的完整内容，
+     * completion 取 {@link ChatResponse#getResult()} 的 assistant 文本，调用点无需重复解析。
      *
      * @param conversationId 会话ID
      * @param operationType  场景标识（格式：agent/multi 前缀 + 具体 handler/阶段，
      *                       如 agent/skill、agent/chat、multi/planner、multi/aggregator）
-     * @param chatResponse   LLM 调用响应（可能为 null）
+     * @param request        LLM 调用请求（提取输入内容，可为 null）
+     * @param response       LLM 调用响应（提取 usage 与输出内容，可为 null）
      */
     @Async
-    public void saveCostRecord(String conversationId, String operationType, ChatResponse chatResponse) {
-        if (chatResponse == null) {
+    public void saveCostRecord(String conversationId, String operationType,
+                               ChatClientRequest request, ChatClientResponse response) {
+        if (response == null || response.chatResponse() == null) {
             return;
         }
+        ChatResponse chatResponse = response.chatResponse();
         ChatResponseMetadata metadata = chatResponse.getMetadata();
         Usage usage = metadata != null ? metadata.getUsage() : null;
         if (usage == null || usage.getPromptTokens() == null) {
             return;
         }
         String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-v4-flash";
+        String promptContent = request != null && request.prompt() != null ? request.prompt().getContents() : null;
         saveCostRecord(conversationId, modelName, usage.getCacheReadInputTokens(),
                 usage.getPromptTokens(),
-                usage.getCompletionTokens(), operationType, conversationId);
+                usage.getCompletionTokens(), operationType, conversationId,
+                promptContent, extractCompletion(chatResponse));
+    }
+
+    /**
+     * 从 ChatResponse 提取 assistant 输出文本；无结果或空文本时返回 null
+     */
+    private String extractCompletion(ChatResponse chatResponse) {
+        if (chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
+            return null;
+        }
+        String text = chatResponse.getResult().getOutput().getText();
+        return (text == null || text.isBlank()) ? null : text;
     }
 
     /**

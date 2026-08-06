@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS cost_record (
     cost_cny DECIMAL(10, 6) NOT NULL,
     operation_type VARCHAR(32) NOT NULL,
     conversation_id VARCHAR(128),
+    prompt_content CLOB,
+    completion_content CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

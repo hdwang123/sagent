@@ -162,6 +162,23 @@
             justify-content: flex-end;
             margin-top: 16px;
         }
+
+        .detail-section-title {
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .detail-content {
+            max-height: 58vh;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #f5f7fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -301,7 +318,16 @@
                             <template slot-scope="scope">{{ formatNumber(scope.row.totalTokens) }}</template>
                         </el-table-column>
                         <el-table-column label="费用" width="100" align="right">
-                            <template slot-scope="scope"><span class="cost-amount">¥{{ scope.row.costCny }}</span></template>
+                            <template slot-scope="scope">
+                                <el-button type="text" class="cost-amount" @click="viewFormula(scope.row)">¥{{ scope.row.costCny }}</el-button>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="内容详情" width="100" align="center">
+                            <template slot-scope="scope">
+                                <el-button v-if="scope.row.promptContent || scope.row.completionContent"
+                                           type="text" icon="el-icon-view" @click="viewCostDetail(scope.row)">查看</el-button>
+                                <span v-else class="detail-cell">-</span>
+                            </template>
                         </el-table-column>
                         <el-table-column label="会话ID" prop="conversationId" min-width="150" show-overflow-tooltip></el-table-column>
                     </el-table>
@@ -309,6 +335,30 @@
             </el-tabs>
         </div>
     </main>
+
+    <!-- LLM 输入输出内容详情弹窗 -->
+    <el-dialog title="LLM 输入输出详情" :visible.sync="costDetailVisible" width="72%" top="6vh">
+        <el-row :gutter="16">
+            <el-col :span="12">
+                <div class="detail-section-title">输入（Prompt）</div>
+                <pre class="detail-content">{{ costDetail.promptContent || '（无内容）' }}</pre>
+            </el-col>
+            <el-col :span="12">
+                <div class="detail-section-title">输出（Completion）</div>
+                <pre class="detail-content">{{ costDetail.completionContent || '（无内容）' }}</pre>
+            </el-col>
+        </el-row>
+        <div slot="footer">
+            <el-button size="small" @click="costDetailVisible = false">关闭</el-button>
+        </div>
+    </el-dialog>
+    <!-- 计费公式弹窗 -->
+    <el-dialog title="计费公式" :visible.sync="formulaVisible" width="520px" top="22vh">
+        <pre class="detail-content" style="max-height:none;">{{ formulaText || '（无）' }}</pre>
+        <div slot="footer">
+            <el-button size="small" @click="formulaVisible = false">关闭</el-button>
+        </div>
+    </el-dialog>
 </div>
 
 <script src="lib/vue/vue.min.js"></script>
@@ -330,7 +380,13 @@
                 costFilter: { userId: '', dateRange: null },
                 costRows: [],
                 costSummary: { count: 0, totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, totalCost: '0.000000' },
-                costLoading: false
+                costLoading: false,
+                // 内容详情弹窗
+                costDetailVisible: false,
+                costDetail: { promptContent: '', completionContent: '' },
+                // 计费公式弹窗
+                formulaVisible: false,
+                formulaText: ''
             };
         },
         methods: {
@@ -394,6 +450,14 @@
             resetCostFilter: function () {
                 this.costFilter = { userId: '', dateRange: null };
                 this.loadCost();
+            },
+            viewCostDetail: function (row) {
+                this.costDetail = row;
+                this.costDetailVisible = true;
+            },
+            viewFormula: function (row) {
+                this.formulaText = row.formula;
+                this.formulaVisible = true;
             },
             // ---------- 工具 ----------
             toQuery: function (obj) {

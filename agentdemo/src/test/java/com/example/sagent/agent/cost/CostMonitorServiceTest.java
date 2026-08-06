@@ -3,6 +3,14 @@ package com.example.sagent.agent.cost;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.chat.client.ChatClientRequest;
+import org.springframework.ai.chat.client.ChatClientResponse;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -10,6 +18,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * CostMonitorService 缓存命中计费单元测试
@@ -36,17 +45,22 @@ class CostMonitorServiceTest {
 
     @Test
     void saveCostRecord_allCacheRead_chargesCacheReadPrice() {
-        service.saveCostRecord("user-1", "deepseek-v4-flash", 1000L, 1000L, 0L, "agent/chat", "conv-1");
+        service.saveCostRecord("user-1", "deepseek-v4-flash", 1000L, 1000L, 0L, "agent/chat", "conv-1",
+                "prompt-1", "completion-1");
 
         CostRecord record = capturedRecord();
         // 1000 命中 × 0.00002/1K = 0.00002，未命中为 0
         assertThat(record.getCostCny()).isEqualByComparingTo("0.00002");
+        // LLM 输入输出内容一并落库
+        assertThat(record.getPromptContent()).isEqualTo("prompt-1");
+        assertThat(record.getCompletionContent()).isEqualTo("completion-1");
     }
 
     @Test
     void saveCostRecord_partialCacheRead_splitsPricing() {
         // 400 命中 + 600 未命中 + 500 输出
-        service.saveCostRecord("user-1", "deepseek-v4-flash", 400L, 1000L, 500L, "agent/chat", "conv-1");
+        service.saveCostRecord("user-1", "deepseek-v4-flash", 400L, 1000L, 500L, "agent/chat", "conv-1",
+                "prompt-2", "completion-2");
 
         CostRecord record = capturedRecord();
         // 400×0.00002/1K + 600×0.001/1K + 500×0.002/1K = 0.000008 + 0.0006 + 0.001
@@ -59,21 +73,59 @@ class CostMonitorServiceTest {
 
     @Test
     void saveCostRecord_nullCacheRead_chargesFullMissPrice() {
-        service.saveCostRecord("user-1", "deepseek-v4-flash", null, 1000L, 0L, "agent/chat", "conv-1");
+        service.saveCostRecord("user-1", "deepseek-v4-flash", null, 1000L, 0L, "agent/chat", "conv-1",
+                null, null);
 
         CostRecord record = capturedRecord();
         // 无命中信息时全按未命中价：1000×0.001/1K
         assertThat(record.getCostCny()).isEqualByComparingTo("0.001");
+        // 内容可为 null
+        assertThat(record.getPromptContent()).isNull();
+        assertThat(record.getCompletionContent()).isNull();
     }
 
     @Test
     void saveCostRecord_cacheReadExceedsInput_clampsToInput() {
         // 防御性校验：命中数超过输入总数时按输入总数截断
-        service.saveCostRecord("user-1", "deepseek-v4-flash", 1000L, 500L, 0L, "agent/chat", "conv-1");
+        service.saveCostRecord("user-1", "deepseek-v4-flash", 1000L, 500L, 0L, "agent/chat", "conv-1",
+                "prompt-4", "completion-4");
 
         CostRecord record = capturedRecord();
         // 500 命中 × 0.00002/1K = 0.00001
         assertThat(record.getCostCny()).isEqualByComparingTo("0.00001");
+    }
+
+    @Test
+    void saveCostRecord_fromRequestResponse_extractsPromptAndCompletion() {
+        // 便捷方法：从 ChatClientRequest/ChatClientResponse 提取输入输出内容
+        ChatClientRequest request = mock(ChatClientRequest.class);
+        when(request.prompt()).thenReturn(new Prompt("用户问题"));
+
+        ChatResponse chatResponse = mock(ChatResponse.class);
+        ChatResponseMetadata metadata = mock(ChatResponseMetadata.class);
+        Usage usage = mock(Usage.class);
+        Generation generation = mock(Generation.class);
+        AssistantMessage assistantMessage = mock(AssistantMessage.class);
+        when(metadata.getModel()).thenReturn("deepseek-v4-flash");
+        when(metadata.getUsage()).thenReturn(usage);
+        when(usage.getPromptTokens()).thenReturn(10);
+        when(usage.getCompletionTokens()).thenReturn(5);
+        when(chatResponse.getMetadata()).thenReturn(metadata);
+        when(chatResponse.getResult()).thenReturn(generation);
+        when(generation.getOutput()).thenReturn(assistantMessage);
+        when(assistantMessage.getText()).thenReturn("模型回答");
+
+        ChatClientResponse response = mock(ChatClientResponse.class);
+        when(response.chatResponse()).thenReturn(chatResponse);
+
+        service.saveCostRecord("conv-1", "agent/chat", request, response);
+
+        CostRecord record = capturedRecord();
+        assertThat(record.getOperationType()).isEqualTo("agent/chat");
+        assertThat(record.getPromptContent()).isEqualTo("用户问题");
+        assertThat(record.getCompletionContent()).isEqualTo("模型回答");
+        assertThat(record.getInputTokens()).isEqualTo(10L);
+        assertThat(record.getOutputTokens()).isEqualTo(5L);
     }
 
     private CostRecord capturedRecord() {

@@ -48,7 +48,8 @@ public class TokenUsageCostAdvisor implements CallAdvisor {
         String conversationId = (String) request.context().get(ChatMemory.CONVERSATION_ID);
         String operationType = (String) request.context().get("operationType");
         if (conversationId != null && operationType != null) {
-            costMonitorService.saveCostRecord(conversationId, operationType, response.chatResponse());
+            // 同时传入请求与响应，便于记录完整的 LLM 输入(prompt)与输出(completion)内容
+            costMonitorService.saveCostRecord(conversationId, operationType, request, response);
         }
         return response;
     }

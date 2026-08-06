@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
@@ -53,6 +54,16 @@ public class CostRecord {
     @Column(length = 128)
     private String conversationId;
 
+    /** LLM 输入内容（prompt 全文，含系统提示、历史与上下文） */
+    @Lob
+    @Column(name = "prompt_content")
+    private String promptContent;
+
+    /** LLM 输出内容（completion 全文） */
+    @Lob
+    @Column(name = "completion_content")
+    private String completionContent;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -63,7 +74,8 @@ public class CostRecord {
     public CostRecord(Long id, String userId, String modelName,
                       Long cacheReadInputTokens, Long inputTokens, Long outputTokens, Long totalTokens,
                       BigDecimal costCny, String operationType,
-                      String conversationId, LocalDateTime createdAt) {
+                      String conversationId, String promptContent, String completionContent,
+                      LocalDateTime createdAt) {
         this.id = id;
         this.userId = userId;
         this.modelName = modelName;
@@ -74,6 +86,8 @@ public class CostRecord {
         this.costCny = costCny;
         this.operationType = operationType;
         this.conversationId = conversationId;
+        this.promptContent = promptContent;
+        this.completionContent = completionContent;
         this.createdAt = createdAt;
     }
 
@@ -115,6 +129,14 @@ public class CostRecord {
 
     public String getConversationId() {
         return conversationId;
+    }
+
+    public String getPromptContent() {
+        return promptContent;
+    }
+
+    public String getCompletionContent() {
+        return completionContent;
     }
 
     public LocalDateTime getCreatedAt() {
