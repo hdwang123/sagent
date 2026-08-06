@@ -55,6 +55,22 @@ agent:
     hybrid-top-k: 10
     reranked-top-k: 3
     retrieval-history-windows: 2
+  cost:
+    pricing:
+      # 模型 token 定价（人民币 / 每 1000 tokens，平时价）
+      # 来源：DeepSeek 官方定价 api-docs.deepseek.com（2026-08，高峰时段价格为平时 2 倍）
+      default-model: deepseek-v4-flash
+      models:
+        deepseek-v4-flash:
+          input-price-per-1k: 0.001
+          output-price-per-1k: 0.002
+        deepseek-v4-pro:
+          input-price-per-1k: 0.003
+          output-price-per-1k: 0.006
+        # deepseek-chat 旧别名已映射至 deepseek-v4-flash 定价
+        deepseek-chat:
+          input-price-per-1k: 0.001
+          output-price-per-1k: 0.002
 
 app:
   playwright:

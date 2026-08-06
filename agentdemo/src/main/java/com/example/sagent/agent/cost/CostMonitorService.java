@@ -22,9 +22,11 @@ public class CostMonitorService {
     private static final Logger LOGGER = LoggerFactory.getLogger(CostMonitorService.class);
 
     private final CostRecordRepository costRecordRepository;
+    private final ModelPricing modelPricing;
 
-    public CostMonitorService(CostRecordRepository costRecordRepository) {
+    public CostMonitorService(CostRecordRepository costRecordRepository, ModelPricing modelPricing) {
         this.costRecordRepository = costRecordRepository;
+        this.modelPricing = modelPricing;
     }
 
     /**
@@ -35,7 +37,7 @@ public class CostMonitorService {
                                 long inputTokens, long outputTokens,
                                 String operationType, String conversationId) {
         try {
-            ModelPricing.Pricing p = ModelPricing.get(modelName);
+            ModelPricing.Pricing p = modelPricing.get(modelName);
 
             long totalTokens = inputTokens + outputTokens;
             BigDecimal inputCost = p.inputPricePer1k()
