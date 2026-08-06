@@ -150,10 +150,12 @@ public class TaskExecutor {
                         replanCount++;
                         LOGGER.info("检测到{}个失败任务，触发第{}/{}次重新规划",
                                 failedIds.size(), replanCount, maxReplan);
+                        int prevPendingCount = pending.size();
                         plan = planner.replan(message, results, failedIds, pending, plan);
                         pending.clear();
                         pending.addAll(plan.tasks());
-                        LOGGER.info("重新规划完成: 新增{}个任务, 剩余pending={}个", plan.tasks().size(), pending.size());
+                        LOGGER.info("重新规划完成: 原pending={}个, 新计划={}个, 净变化={}个",
+                                prevPendingCount, plan.tasks().size(), plan.tasks().size() - prevPendingCount);
                         continue;
                     }
                     // 方案E：重新规划次数用完，依赖失败任务的后续任务注定无意义，止损跳过
