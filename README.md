@@ -1,13 +1,13 @@
 # Sagent
 
-Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统等核心功能。
+Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多类型消息路由、工具调用、技能系统、多 Agent 编排、审计与 Token 成本监控等核心功能。
 
-用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 OpenAI 兼容接口调用（默认 OpenRouter，可切换 DeepSeek），Embedding 模型在本地 JVM 中运行。
+用户发送消息后，系统先调用大模型进行消息分类，再根据分类结果路由到普通聊天、RAG 知识库检索、审批技能、技能执行或通用技能执行流程。聊天模型通过 OpenAI 兼容接口调用（默认 DeepSeek，可切换 OpenRouter），Embedding 模型在本地 JVM 中运行。所有 LLM 调用由 Token 成本 Advisor 逐轮计量入账，敏感操作由 AOP 审计切面记录日志，管理页面可查询审计与成本明细。
 
 ## 功能特性
 
 - **智能消息分类**：支持 `CHAT`、`ASKILL`、`RAG`、`SKILL`、`GSKILL`、`MCP` 六种消息类型
-- **统一结构化返回**：所有 Handler 统一返回 `HandlerResult(answer, sources, code)` 结构，业务状态码可被编排层（`MultiAgentService`）使用；工具/LLM 中间结果使用 `AgentResult(code, content)` 结构化模型承载
+- **统一结构化返回**：所有 Handler 统一返回 `HandlerResult(answer, sources, code)` 结构，业务状态码可被编排层（`MultiAgentService`）使用；工具/LLM 中间结果使用 `AgentResult(code, content)` 结构化模型承载，反序列化时容错处理 LLM 输出中 `code` 缺失/null/非法文本的异常形态（由 `AgentResultDeserializer` 归一化为 200，避免 `Cannot map null into type int` 导致技能整体失败）
 - **普通聊天**：基于 OpenAI 兼容接口的多轮对话能力
 - **RAG 知识库检索**：本地 ONNX Embedding + `SimpleVectorStore` 实现高效检索
 - **SKILL 企业固定技能**：提示词引导单次调用单一工具（仍走工具调用循环，仅约束 LLM 一次只选一个工具）
@@ -22,11 +22,15 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
   - 审批面板：前端 Element UI 表格展示待审批项，支持批准/拒绝
   - 自动执行：批准后通过 `ToolRegistry` 重新唤起原始工具方法执行业务逻辑
   - 用户查询：内置 `getMyApprovals()`、`checkApprovalById()` 查询审批状态
-- **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动
+  - 上下文防御：审批切面校验会话上下文，ThreadLocal 丢失（线程复用/异常未清理）时拒绝创建无归属的审批记录
+- **MCP 外部服务**：通过 MCP 协议调用外部工具（计算器、天气、股票查询等），采用延迟初始化，不影响主应用启动；工具清单由 `McpHandler` 运行时从 MCP Server 实时拉取（`getToolDescriptors()`），消息分类提示词动态生成，MCP Server 新增工具无需人工维护描述
 - **文件管理**：支持生成的文档、图片和压缩包下载，图片显示缩略图，点击可下载原图；中文文件名通过 RFC 5987 `filename*` 编码，避免 Tomcat 丢弃含非 ASCII 字符的 `Content-Disposition` 响应头
 - **多轮会话记忆**：基于 `MessageChatMemoryAdvisor` 的会话管理
 - **多 Agent 编排**：Planner 拆解任务（含图校验 + 多轮记忆注入）→ Executor 按依赖并行执行（复用现有 Handler，含异常/超时/死锁兜底 + 失败纠偏：重试/重新规划/止损，4xx 不重试/5xx 才重试）→ 汇总 Agent 生成最终回答（含 try-catch 兜底），支持"查询数据 → 生成文档"等复合任务（详见附录章节）
-- **前端界面**：Vue 2 + Element UI 聊天测试页面
+- **审计日志**：`@AuditLog` 注解 + `AuditAspect` AOP 切面，拦截敏感操作异步记录审计日志（操作类型、资源类型、耗时、成功/失败），用户身份从 ThreadLocal 会话上下文解析，无上下文时兜底 `unknown`
+- **Token 成本监控**：`TokenUsageCostAdvisor`（order=+400，位于工具循环内层）逐轮记录每次 LLM 往返的 token 消耗，解决 Spring AI `ToolCallingAdvisor` 只统计最后一轮的问题（GitHub issue #6411）；`ModelPricing` 按模型定价换算人民币费用，`CostMonitorService` 异步落库，不阻塞主流程
+- **管理页面**：`admin.html` 提供审计日志与 Token 成本查询（按用户/时间范围筛选、汇总 token 与费用），聊天页顶部图标一键跳转
+- **前端界面**：Vue 2 + Element UI 聊天测试页面 + 管理页面
 - **详细响应**：返回路由类型、分类理由和 RAG 来源
 
 ## 技术栈
@@ -36,11 +40,11 @@ Sagent 是一个基于 Spring AI 2.0 的智能 Agent 示例项目，实现了多
 | JDK | 21 |
 | Spring Boot | 4.1.0 |
 | Spring AI | 2.0.0 |
-| OpenRouter / DeepSeek | OpenAI 兼容聊天接口（默认 OpenRouter，可切换） |
+| DeepSeek / OpenRouter | OpenAI 兼容聊天接口（默认 DeepSeek，可切换 OpenRouter） |
 | Transformers | 本地运行 ONNX Embedding |
 | SimpleVectorStore | 内存向量库 |
-| H2 | 内存数据库 |
-| Vue 2 / Element UI | 聊天页面 |
+| H2 | 内存数据库（产品、审批、审计、成本记录） |
+| Vue 2 / Element UI | 聊天页面 + 管理页面 |
 
 ## 工作流程
 
@@ -89,6 +93,19 @@ src/main/java/com/example/sagent
 │  │  ├─ ApprovalBypass.java         ThreadLocal 绕过标志
 │  │  ├─ ToolRegistry.java           工具注册表（审批通过后重新调用原始工具）
 │  │  └─ UserIdResolver.java         用户 ID 解析器
+│  ├─ audit         审计日志
+│  │  ├─ AuditLog.java               @AuditLog 注解
+│  │  ├─ AuditAspect.java            @Aspect 切面拦截（异步记录操作日志）
+│  │  ├─ AuditLogEntity.java         审计记录实体
+│  │  ├─ AuditLogRepository.java     审计记录查询仓库
+│  │  ├─ OperationType.java          操作类型枚举
+│  │  └─ ResourceType.java           资源类型枚举
+│  ├─ cost          成本监控
+│  │  ├─ TokenUsageCostAdvisor.java  逐轮 token 计量 Advisor
+│  │  ├─ CostMonitorService.java     成本监控服务（异步落库）
+│  │  ├─ CostRecord.java             成本记录实体
+│  │  ├─ CostRecordRepository.java   成本记录查询仓库
+│  │  └─ ModelPricing.java           模型定价表（人民币计价）
 │  ├─ handlers      Agent 处理器实现
 │  │  ├─ ChatHandler       普通聊天处理器
 │  │  ├─ ASkillHandler     ASKILL 审批技能处理器
@@ -117,6 +134,7 @@ src/main/java/com/example/sagent
 │  ├─ model         数据模型
 │  │  ├─ AgentType         Agent 类型枚举
 │  │  ├─ AgentResult       结构化返回（record: code + content）
+│  │  ├─ AgentResultDeserializer AgentResult 自定义反序列化器（code 缺失/null 容错）
 │  │  ├─ AgentResultParser AgentResult 解析器（returnDirect 场景）
 │  │  ├─ AgentResponse     响应模型
 │  │  ├─ HandlerResult     处理器结果
@@ -136,16 +154,28 @@ src/main/java/com/example/sagent
    ├─ ChatController       聊天接口
    ├─ ApprovalController   审批接口
    ├─ DataController       数据查询接口（产品、审批列表）
+   ├─ AuditController      审计与成本查询接口
    └─ FileController       文件管理接口
 
 src/main/resources
 ├─ embedding        内嵌 ONNX Embedding 模型
 ├─ knowledge        本地知识库文档
-├─ static           chat.html 及前端依赖
+├─ static           chat.html、admin.html 及前端依赖
 ├─ schema.sql       H2 表结构
 ├─ data.sql         H2 演示数据
 └─ application.yml  应用配置
 ```
+
+## 测试
+
+112 个单元/集成测试（14 个测试类）覆盖消息分类、6 个 Handler、审批系统、审计/成本监控（模型定价、Token Advisor 逐轮计量）、任务编排（Planner 图校验、TaskExecutor 调度/纠偏）、多 Agent 全链路集成、AgentResult 解析与容错反序列化等核心逻辑。
+
+```bash
+# 需使用 JDK 21 运行
+mvn test -pl agentdemo
+```
+
+多 Agent 全链路集成测试（`MultiAgentIntegrationTest`）不启动 Spring 上下文，手动装配真实 Planner → TaskExecutor（真实线程池）→ Aggregator → HandlerRegistry → 会话记忆，仅 mock LLM 输出，覆盖依赖分波次执行、失败传播、空计划降级、多轮记忆闭环与复合会话 ID 等编排行为。
 
 ## 运行项目
 
@@ -153,25 +183,27 @@ src/main/resources
 
 - JDK 21
 - Maven 3.9+
-- OpenRouter API Key（或切换 DeepSeek 后使用 DeepSeek API Key）
+- DeepSeek API Key（或切换 OpenRouter 后使用 OpenRouter API Key）
 
 不需要安装 Ollama、Python、Node.js、MySQL 或 Redis。
 
-### 配置模型服务（OpenRouter）
+### 配置模型服务（DeepSeek）
 
-项目默认使用 OpenRouter 调用大模型，必须设置环境变量：
+项目默认使用 DeepSeek 调用大模型，必须设置环境变量：
+
+```text
+DEEPSEEK_API_KEY
+```
+
+默认模型 `deepseek-chat`。
+
+**切换 OpenRouter**：将 `application.yml` 中 `spring.ai.openai` 配置的 DeepSeek 部分注释掉，取消 OpenRouter 部分注释，然后设置：
 
 ```text
 OPENROUTER_API_KEY
 ```
 
 可通过 `OPENROUTER_MODEL` 指定模型（默认 `openrouter/free`）。
-
-**切换 DeepSeek**：将 `application.yml` 中 `spring.ai.openai` 配置的 OpenRouter 部分注释掉，取消 DeepSeek 部分注释，然后设置：
-
-```text
-DEEPSEEK_API_KEY
-```
 
 **安全提示**：不要把真实 API Key 写入 `application.yml` 或提交到 Git。
 
@@ -235,8 +267,19 @@ http://localhost:8080/chat.html
 - 下载链接渲染（SKILL 生成的文件，图片显示缩略图）
 - 审批面板（查看待审批项，支持批准/拒绝）
 - 产品查询面板（查看当前数据库产品，用于核对审批操作结果）
+- 审计日志 / Token 监控入口（顶部图标，跳转管理页面）
 
 页面使用项目内的 Vue 和 Element UI 资源，不需要前端构建。
+
+### 管理页面
+
+```text
+http://localhost:8080/admin.html?tab=audit
+```
+
+两个 Tab：
+- **审计日志**（`/api/admin/audit/list`）：按用户/时间范围筛选操作日志，展示操作类型、资源类型、耗时与成功/失败状态
+- **Token 监控**（`/api/admin/audit/cost`）：按用户/时间范围查询 LLM 调用成本，汇总 input/output token 与人民币费用明细
 
 ## 测试示例
 
@@ -314,7 +357,8 @@ What does WHO recommend to reduce dementia risk?
 
 ## 注意事项
 
-- 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空
+- 会话记忆、向量库和 H2 数据都保存在内存中，应用重启后会清空（含审计日志与成本记录）
+- 审计/成本记录异步写入：`AuditAspect` 与 `CostMonitorService` 均不阻塞主流程，写入失败仅记日志不影响业务
 - 双窗口记忆架构：CHAT/RAG 使用大窗口（20条消息），工具类处理器（SKILL/GSKILL/ASKILL/MCP）使用小窗口（4条消息），防止 LLM 复述历史查询结果而不重新调用工具
 - RAG 知识文件位于 `src/main/resources/knowledge`
 - 数据库查询走 GSKILL/DataBaseSkill，删除和修改操作需通过 ASKILL/ApprovalSqlSkill 审批后方可执行
@@ -418,6 +462,8 @@ flowchart TD
 | 400 | 业务校验失败 | 参数非法、业务规则不满足 |
 | 404 | 资源不存在 | 查询无结果、数据未找到 |
 | 500 | 技术错误 | 工具执行异常、外部服务不可达 |
+
+**反序列化容错**：模式②中 LLM 结构化输出可能出现 `code` 缺失、显式 `null` 或非法文本（如 `"abc"`），`AgentResult` 通过 `@JsonDeserialize(using = AgentResultDeserializer.class)` 统一归一化为 200（成功）。语义依据：技能实际执行结果以 `content` 为准，`code` 仅为状态标记——LLM 未输出有效 `code` 不代表操作失败，强行报"技能执行失败"会误导用户（如审批实际已提交成功）。
 
 ## 附录 3：工具调用循环
 
