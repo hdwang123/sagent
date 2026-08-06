@@ -1,5 +1,6 @@
 package com.example.sagent.agent.cost;
 
+import com.example.sagent.agent.approval.UserIdResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientAttributes;
@@ -32,10 +33,13 @@ public class CostMonitorService {
 
     private final CostRecordRepository costRecordRepository;
     private final ModelPricing modelPricing;
+    private final UserIdResolver userIdResolver;
 
-    public CostMonitorService(CostRecordRepository costRecordRepository, ModelPricing modelPricing) {
+    public CostMonitorService(CostRecordRepository costRecordRepository, ModelPricing modelPricing,
+                              UserIdResolver userIdResolver) {
         this.costRecordRepository = costRecordRepository;
         this.modelPricing = modelPricing;
+        this.userIdResolver = userIdResolver;
     }
 
     /**
@@ -124,7 +128,9 @@ public class CostMonitorService {
             return;
         }
         String modelName = metadata.getModel() != null ? metadata.getModel() : "deepseek-v4-flash";
-        saveCostRecord(conversationId, modelName, usage.getCacheReadInputTokens(),
+        // userId 通过 UserIdResolver 从会话ID解析，保证成本记录的用户维度正确（而非直接落会话ID）
+        String userId = userIdResolver.resolve(conversationId);
+        saveCostRecord(userId, modelName, usage.getCacheReadInputTokens(),
                 usage.getPromptTokens(),
                 usage.getCompletionTokens(), operationType, conversationId,
                 extractPrompt(request), extractCompletion(chatResponse));

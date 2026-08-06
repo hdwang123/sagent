@@ -1,5 +1,6 @@
 package com.example.sagent.agent.cost;
 
+import com.example.sagent.agent.approval.UserIdResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +38,7 @@ class CostMonitorServiceTest {
     private static final BigDecimal CACHE_READ = BigDecimal.valueOf(0.00002);  // 命中价 /1K
 
     private CostRecordRepository repository;
+    private UserIdResolver userIdResolver;
     private CostMonitorService service;
 
     @BeforeEach
@@ -44,7 +46,9 @@ class CostMonitorServiceTest {
         repository = mock(CostRecordRepository.class);
         ModelPricing pricing = new ModelPricing("deepseek-v4-flash", Map.of(
                 "deepseek-v4-flash", new ModelPricing.Pricing(INPUT, OUTPUT, CACHE_READ)));
-        service = new CostMonitorService(repository, pricing);
+        userIdResolver = mock(UserIdResolver.class);
+        when(userIdResolver.resolve("conv-1")).thenReturn("user-42");
+        service = new CostMonitorService(repository, pricing, userIdResolver);
     }
 
     @Test
@@ -126,6 +130,8 @@ class CostMonitorServiceTest {
 
         CostRecord record = capturedRecord();
         assertThat(record.getOperationType()).isEqualTo("agent/chat");
+        // userId 由 UserIdResolver 从会话ID解析，而非直接落会话ID
+        assertThat(record.getUserId()).isEqualTo("user-42");
         assertThat(record.getPromptContent()).isEqualTo("用户问题");
         assertThat(record.getCompletionContent()).isEqualTo("模型回答");
         assertThat(record.getInputTokens()).isEqualTo(10L);
