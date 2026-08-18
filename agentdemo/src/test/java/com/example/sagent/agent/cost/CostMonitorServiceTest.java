@@ -33,9 +33,9 @@ import static org.mockito.Mockito.when;
  */
 class CostMonitorServiceTest {
 
-    private static final BigDecimal INPUT = BigDecimal.valueOf(0.001);        // 未命中价 /1K
-    private static final BigDecimal OUTPUT = BigDecimal.valueOf(0.002);        // 输出价 /1K
-    private static final BigDecimal CACHE_READ = BigDecimal.valueOf(0.00002);  // 命中价 /1K
+    private static final BigDecimal INPUT = BigDecimal.valueOf(0.003);        // 未命中价 /1K（高峰档）
+    private static final BigDecimal OUTPUT = BigDecimal.valueOf(0.009);        // 输出价 /1K（高峰档）
+    private static final BigDecimal CACHE_READ = BigDecimal.valueOf(0.0001);  // 命中价 /1K（高峰档）
 
     private CostRecordRepository repository;
     private UserIdResolver userIdResolver;
@@ -57,8 +57,8 @@ class CostMonitorServiceTest {
                 "prompt-1", "completion-1");
 
         CostRecord record = capturedRecord();
-        // 1000 命中 × 0.00002/1K = 0.00002，未命中为 0
-        assertThat(record.getCostCny()).isEqualByComparingTo("0.00002");
+        // 1000 命中 × 0.0001/1K = 0.0001，未命中为 0
+        assertThat(record.getCostCny()).isEqualByComparingTo("0.0001");
         // LLM 输入输出内容一并落库
         assertThat(record.getPromptContent()).isEqualTo("prompt-1");
         assertThat(record.getCompletionContent()).isEqualTo("completion-1");
@@ -71,8 +71,8 @@ class CostMonitorServiceTest {
                 "prompt-2", "completion-2");
 
         CostRecord record = capturedRecord();
-        // 400×0.00002/1K + 600×0.001/1K + 500×0.002/1K = 0.000008 + 0.0006 + 0.001
-        assertThat(record.getCostCny()).isEqualByComparingTo("0.001608");
+        // 400×0.0001/1K + 600×0.003/1K + 500×0.009/1K = 0.00004 + 0.0018 + 0.0045
+        assertThat(record.getCostCny()).isEqualByComparingTo("0.00634");
         assertThat(record.getInputTokens()).isEqualTo(1000L);
         assertThat(record.getOutputTokens()).isEqualTo(500L);
         assertThat(record.getTotalTokens()).isEqualTo(1500L);
@@ -85,8 +85,8 @@ class CostMonitorServiceTest {
                 null, null);
 
         CostRecord record = capturedRecord();
-        // 无命中信息时全按未命中价：1000×0.001/1K
-        assertThat(record.getCostCny()).isEqualByComparingTo("0.001");
+        // 无命中信息时全按未命中价：1000×0.003/1K
+        assertThat(record.getCostCny()).isEqualByComparingTo("0.003");
         // 内容可为 null
         assertThat(record.getPromptContent()).isNull();
         assertThat(record.getCompletionContent()).isNull();
@@ -99,8 +99,8 @@ class CostMonitorServiceTest {
                 "prompt-4", "completion-4");
 
         CostRecord record = capturedRecord();
-        // 500 命中 × 0.00002/1K = 0.00001
-        assertThat(record.getCostCny()).isEqualByComparingTo("0.00001");
+        // 500 命中 × 0.0001/1K = 0.00005
+        assertThat(record.getCostCny()).isEqualByComparingTo("0.00005");
     }
 
     @Test

@@ -57,19 +57,21 @@ agent:
     retrieval-history-windows: 2
   cost:
     pricing:
-      # 模型 token 定价（人民币 / 每 1000 tokens，平时价）
-      # 来源：DeepSeek 官方定价 api-docs.deepseek.com（2026-08，高峰时段价格为平时 2 倍）
-      # 输入 token 分缓存命中（cache-read）与未命中两档计费，命中价约为未命中的 1/50
+      # 模型 token 定价（人民币 / 每 1000 tokens，DeepSeek 高峰时段价）
+      # 来源：DeepSeek 官方定价 api-docs.deepseek.com（2026-08-17 起启用峰谷分时：
+      #   高峰 9-12 / 14-18 工作日，空闲为其余时间，空闲价 = 高峰 × 50%）
+      # 输入 token 分缓存命中（cache-read）与未命中两档计费，命中价远低于未命中
+      # 注意：本配置采用高峰档单价统一计费，空闲时段会高估约 100%，不引入运行时时段判断
       default-model: deepseek-v4-flash
       models:
         deepseek-v4-flash:
-          input-price-per-1k: 0.001
-          output-price-per-1k: 0.002
-          cache-read-input-price-per-1k: 0.00002
-        deepseek-v4-pro:
           input-price-per-1k: 0.003
-          output-price-per-1k: 0.006
-          cache-read-input-price-per-1k: 0.000025
+          output-price-per-1k: 0.009
+          cache-read-input-price-per-1k: 0.0001
+        deepseek-v4-pro:
+          input-price-per-1k: 0.009
+          output-price-per-1k: 0.027
+          cache-read-input-price-per-1k: 0.0003
 
 app:
   playwright:

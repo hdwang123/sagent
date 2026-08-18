@@ -12,7 +12,8 @@ import java.util.Map;
  * <p>
  * 从 {@code application.yml} 的 {@code agent.cost.pricing} 读取各模型每 1000 tokens 单价
  * （人民币计价），支持外部化配置与运行时调整，无需改代码即可适配价格变动。
- * 定价数据来源：DeepSeek 官方定价（api-docs.deepseek.com，平时价，不含高峰时段 2 倍价）。
+ * 定价数据来源：DeepSeek 官方定价（api-docs.deepseek.com，2026-08-17 起启用峰谷分时，
+ * 本配置采用高峰档单价统一计费，空闲时段会高估约 100%，不引入运行时时段判断）。
  */
 @Component
 @ConfigurationProperties(prefix = "agent.cost.pricing")

@@ -13,7 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * 覆盖：精确匹配、大小写不敏感前缀匹配（deepseek-v4-flash-xxx 命中 deepseek-v4-flash）、
  * null/未知模型兜底默认模型。保证任何模型名都能得到定价，token 记录不被丢弃。
- * 定价数据对应 application.yml 中 agent.cost.pricing 的 DeepSeek 官方平时价。
+ * 定价数据对应 application.yml 中 agent.cost.pricing 的 DeepSeek 官方高峰档价
+ * （2026-08-17 起启用峰谷分时，本配置采用高峰档统一计费）。
  */
 class ModelPricingTest {
 
@@ -23,9 +24,9 @@ class ModelPricingTest {
     void setUp() {
         pricing = new ModelPricing("deepseek-v4-flash", Map.of(
                 "deepseek-v4-flash", new ModelPricing.Pricing(
-                        BigDecimal.valueOf(0.001), BigDecimal.valueOf(0.002), BigDecimal.valueOf(0.00002)),
+                        BigDecimal.valueOf(0.003), BigDecimal.valueOf(0.009), BigDecimal.valueOf(0.0001)),
                 "deepseek-v4-pro", new ModelPricing.Pricing(
-                        BigDecimal.valueOf(0.003), BigDecimal.valueOf(0.006), BigDecimal.valueOf(0.000025))
+                        BigDecimal.valueOf(0.009), BigDecimal.valueOf(0.027), BigDecimal.valueOf(0.0003))
         ));
     }
 
@@ -38,22 +39,22 @@ class ModelPricingTest {
     @Test
     void get_exactMatch_returnsCacheReadPricing() {
         ModelPricing.Pricing p = pricing.get("deepseek-v4-flash");
-        assertThat(p.cacheReadInputPricePer1k()).isEqualByComparingTo("0.00002");
+        assertThat(p.cacheReadInputPricePer1k()).isEqualByComparingTo("0.0001");
     }
 
     @Test
     void get_prefixMatch_returnsDeepSeekPricing() {
         ModelPricing.Pricing p = pricing.get("deepseek-v4-flash-0731");
         assertThat(p).isNotNull();
-        assertThat(p.inputPricePer1k()).isEqualByComparingTo("0.001");
-        assertThat(p.outputPricePer1k()).isEqualByComparingTo("0.002");
+        assertThat(p.inputPricePer1k()).isEqualByComparingTo("0.003");
+        assertThat(p.outputPricePer1k()).isEqualByComparingTo("0.009");
     }
 
     @Test
     void get_caseInsensitivePrefixMatch_returnsPricing() {
         ModelPricing.Pricing p = pricing.get("DeepSeek-V4-Flash");
         assertThat(p).isNotNull();
-        assertThat(p.inputPricePer1k()).isEqualByComparingTo("0.001");
+        assertThat(p.inputPricePer1k()).isEqualByComparingTo("0.003");
     }
 
     @Test
